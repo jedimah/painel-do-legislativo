@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Painel do Legislativo</title>
+<meta name="description" content="Busque projetos de lei por parlamentar e tema. Veja onde está travado, o que falta e quem cobrar."/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet"/>
+<style>
+:root {
+  --verde: #1a3a2a;
+  --verde-md: #2d5a3d;
+  --verde-lt: #4a8c5c;
+  --ouro: #c8a84b;
+  --ouro-lt: #e8c96b;
+  --creme: #f5f0e8;
+  --creme-md: #ede5d4;
+  --branco: #fafaf7;
+  --texto: #1a1a1a;
+  --texto-suave: #5a5a5a;
+  --borda: rgba(26,58,42,0.12);
+  --shadow: 0 2px 16px rgba(26,58,42,0.08);
+  --shadow-md: 0 4px 32px rgba(26,58,42,0.12);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:'DM Sans',sans-serif;background:var(--creme);color:var(--texto);min-height:100vh;font-size:15px;line-height:1.6}
+
+/* NAV */
+nav{background:var(--verde);padding:14px 32px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 2px 20px rgba(0,0,0,0.2)}
+.nav-marca{font-family:'Playfair Display',serif;font-size:1.1rem;color:white;font-weight:700}
+.nav-marca span{color:var(--ouro)}
+.nav-links{display:flex;gap:6px}
+.nav-link{padding:6px 14px;border-radius:999px;font-size:13px;color:rgba(255,255,255,0.7);cursor:pointer;transition:all .15s;border:0.5px solid transparent;text-decoration:none}
+.nav-link:hover{color:white;border-color:rgba(255,255,255,0.2)}
+.nav-cta{background:var(--ouro);color:var(--verde)!important;font-weight:600;border-color:transparent!important}
+.nav-cta:hover{background:var(--ouro-lt)!important}
+
+/* HERO */
+.hero{background:var(--verde);padding:2rem 2rem 2.5rem;text-align:center;position:relative;overflow:hidden;min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0}
+.hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 30% 50%,rgba(200,168,75,0.08) 0%,transparent 60%),radial-gradient(ellipse at 70% 20%,rgba(74,140,92,0.1) 0%,transparent 50%);pointer-events:none}
+.hero-chip{display:inline-block;background:rgba(200,168,75,0.15);border:0.5px solid rgba(200,168,75,0.3);border-radius:999px;padding:4px 14px;font-size:10px;color:var(--ouro);letter-spacing:0.1em;margin-bottom:1rem;text-transform:uppercase}
+.hero h1{font-family:'Playfair Display',serif;font-size:clamp(1.8rem,4.5vw,3.5rem);color:white;line-height:1.1;max-width:800px;margin:0 auto 0.75rem;font-weight:900}
+.hero-sub{font-size:14px;color:rgba(255,255,255,0.65);max-width:480px;margin:0 auto 1.25rem;line-height:1.6}
+
+/* BUSCA */
+.busca-hero{background:rgba(255,255,255,0.07);border:0.5px solid rgba(255,255,255,0.15);border-radius:20px;padding:2rem;max-width:860px;width:100%;margin:0 auto}
+.busca-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.campo-hero label{display:block;font-size:10px;color:rgba(255,255,255,0.4);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:6px}
+.campo-hero input,.campo-hero select{width:100%;background:rgba(255,255,255,0.09);border:0.5px solid rgba(255,255,255,0.18);border-radius:10px;padding:13px 16px;font-family:'DM Sans',sans-serif;font-size:15px;color:white;outline:none;transition:border-color .2s}
+.campo-hero input::placeholder{color:rgba(255,255,255,0.3)}
+.campo-hero input:focus,.campo-hero select:focus{border-color:rgba(200,168,75,0.5);background:rgba(255,255,255,0.1)}
+.campo-hero select{appearance:none;cursor:pointer;color:rgba(255,255,255,0.7)}
+.campo-hero select option{background:#1a3a2a;color:white}
+.busca-row{display:flex;gap:10px;margin-bottom:14px}
+.busca-row .campo-hero{flex:1}
+.btn-buscar-hero{background:var(--ouro);border:none;border-radius:10px;padding:13px 32px;font-family:'DM Sans',sans-serif;font-size:15px;font-weight:600;color:var(--verde);cursor:pointer;white-space:nowrap;transition:all .2s;flex-shrink:0}
+.btn-buscar-hero:hover{background:var(--ouro-lt);transform:translateY(-1px)}
+.btn-buscar-hero:disabled{background:#888;cursor:not-allowed;transform:none}
+
+.temas-rapidos{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.temas-label{font-size:11px;color:rgba(255,255,255,0.35);margin-right:2px}
+.tema-pill{background:rgba(255,255,255,0.07);border:0.5px solid rgba(255,255,255,0.15);border-radius:999px;padding:4px 12px;font-size:12px;color:rgba(255,255,255,0.6);cursor:pointer;transition:all .15s;font-family:'DM Sans',sans-serif}
+.tema-pill:hover,.tema-pill.ativo{background:rgba(200,168,75,0.2);border-color:rgba(200,168,75,0.4);color:var(--ouro)}
+
+/* FILTROS AVANCADOS */
+.toggle-avancado{background:none;border:none;color:rgba(255,255,255,0.4);font-family:'DM Sans',sans-serif;font-size:12px;cursor:pointer;padding:8px 0 0;display:block;margin:0 auto;transition:color .15s}
+.toggle-avancado:hover{color:rgba(255,255,255,0.7)}
+.avancado-grid{display:none;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px;padding-top:12px;border-top:0.5px solid rgba(255,255,255,0.1)}
+.avancado-grid.aberto{display:grid}
+.avancado-check{display:flex;align-items:center;gap:8px;grid-column:1/-1}
+.avancado-check input{width:16px;height:16px;cursor:pointer;accent-color:var(--ouro)}
+.avancado-check label{font-size:12px;color:rgba(255,255,255,0.5);cursor:pointer}
+
+/* FEATURES */
+.features{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--borda);margin-top:0;border-top:1px solid var(--borda)}
+.feature{background:var(--branco);padding:1.5rem 1.75rem;transition:background .15s}
+.feature:hover{background:white}
+.feature-icon{font-size:1.2rem;margin-bottom:10px}
+.feature h3{font-size:14px;font-weight:600;color:var(--verde);margin-bottom:4px}
+.feature p{font-size:13px;color:var(--texto-suave);line-height:1.5}
+
+/* LAYOUT PRINCIPAL */
+.container{max-width:1200px;margin:0 auto;padding:32px 24px}
+
+/* STATUS E ALERTAS */
+.status-bar{background:white;border:0.5px solid var(--borda);border-radius:10px;padding:12px 16px;font-size:13px;color:var(--texto-suave);margin-bottom:16px;display:none}
+.status-bar.ativo{display:block}
+.status-bar.erro{background:#fdf0ee;border-color:#e8a99a;color:#c0392b}
+.status-bar.ok{background:#f0f7f3;border-color:#b8d9c6;color:#2d5a3d}
+
+.aviso-stack{margin-bottom:12px}
+.aviso-item{background:#fffbeb;border-left:3px solid var(--ouro);border-radius:0 8px 8px 0;padding:10px 14px;font-size:13px;color:#856404;margin-bottom:6px}
+
+/* AJUSTE RAPIDO */
+.ajuste-card{background:#f0f7f3;border:0.5px solid #b8d9c6;border-radius:12px;padding:1.25rem;margin-bottom:16px;display:none}
+.ajuste-card.ativo{display:block}
+.ajuste-titulo{font-size:14px;font-weight:600;color:var(--verde-md);margin-bottom:4px}
+.ajuste-copy{font-size:13px;color:var(--texto-suave);margin-bottom:12px}
+.ajuste-acoes{display:flex;gap:8px;flex-wrap:wrap}
+.btn-ajuste{background:white;border:0.5px solid #b8d9c6;border-radius:7px;padding:6px 14px;font-family:'DM Sans',sans-serif;font-size:12px;color:var(--verde-md);cursor:pointer;font-weight:500;transition:all .15s}
+.btn-ajuste:hover{background:var(--verde);color:white;border-color:var(--verde)}
+
+/* KPIS */
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+.kpi{background:white;border:0.5px solid var(--borda);border-radius:12px;padding:16px 18px;border-left:3px solid var(--ouro)}
+.kpi-num{font-family:'Playfair Display',serif;font-size:2rem;font-weight:900;color:var(--verde);line-height:1}
+.kpi-label{font-size:12px;color:var(--texto-suave);margin-top:3px}
+
+/* CHIPS DE QUERY */
+.query-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px}
+.query-chip{background:var(--verde);color:white;border-radius:999px;padding:4px 12px;font-size:12px}
+
+/* RESULTADO LAYOUT */
+.resultado-layout{display:grid;grid-template-columns:1fr 360px;gap:20px;align-items:start}
+
+/* TABELA */
+.tabela-card{background:white;border:0.5px solid var(--borda);border-radius:14px;overflow:hidden;box-shadow:var(--shadow)}
+.tabela-topo{padding:16px 20px;border-bottom:0.5px solid var(--creme-md);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
+.tabela-titulo{font-family:'Playfair Display',serif;font-size:1.05rem;color:var(--verde)}
+.tabela-acoes{display:flex;gap:8px}
+.btn-sec{background:var(--creme);border:0.5px solid var(--creme-md);border-radius:7px;padding:7px 14px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;color:var(--verde);cursor:pointer;transition:all .15s}
+.btn-sec:hover{background:var(--verde);color:white;border-color:var(--verde)}
+.btn-sec:disabled{opacity:.4;cursor:not-allowed}
+
+.toolbar{padding:10px 20px;background:var(--creme);border-bottom:0.5px solid var(--creme-md);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.toolbar select{background:white;border:0.5px solid var(--borda);border-radius:7px;padding:6px 10px;font-family:'DM Sans',sans-serif;font-size:12px;color:var(--texto);outline:none;cursor:pointer}
+.toolbar-meta{font-size:12px;color:var(--texto-suave);margin-left:auto}
+.btn-favs{background:white;border:0.5px solid var(--borda);border-radius:7px;padding:6px 12px;font-family:'DM Sans',sans-serif;font-size:12px;color:var(--texto);cursor:pointer;transition:all .15s}
+.btn-favs.ativo{background:var(--ouro);border-color:var(--ouro);color:var(--verde)}
+
+table{width:100%;border-collapse:collapse}
+thead th{background:var(--creme);padding:9px 14px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--verde-md);white-space:nowrap}
+tbody tr{border-bottom:0.5px solid var(--creme);cursor:pointer;transition:background .1s}
+tbody tr:hover{background:var(--creme)}
+tbody tr.selecionado{background:#eef5f0}
+tbody td{padding:11px 14px;font-size:13px;vertical-align:top}
+
+.badge{display:inline-block;padding:3px 8px;border-radius:5px;font-size:11px;font-weight:700}
+.badge-camara{background:#e8f0eb;color:var(--verde-md)}
+.badge-senado{background:#e8edf5;color:#1a3058}
+.status-pill{display:inline-block;padding:3px 9px;border-radius:5px;font-size:11px;font-weight:600}
+.status-tramitando{background:#fff3cd;color:#856404}
+.status-aprovado{background:#d1e7dd;color:#0a3622}
+.status-arquivado{background:#f8d7da;color:#842029}
+.status-outro{background:#e2e3e5;color:#41464b}
+
+.ementa-cell{max-width:280px;font-size:12px;color:var(--texto-suave);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.item-meta{display:flex;flex-direction:column;gap:2px}
+.item-meta small{font-size:11px;color:var(--texto-suave)}
+.item-meta strong{font-size:13px}
+
+.link-ver{color:var(--verde-lt);font-size:12px;font-weight:600;text-decoration:none;cursor:pointer;background:none;border:none;font-family:'DM Sans',sans-serif;padding:0}
+.link-ver:hover{text-decoration:underline}
+
+.vazio-row td{text-align:center;padding:48px 24px;color:var(--texto-suave);font-size:14px}
+
+.paginacao{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-top:0.5px solid var(--creme-md)}
+.paginacao button{background:white;border:0.5px solid var(--borda);border-radius:7px;padding:6px 14px;font-family:'DM Sans',sans-serif;font-size:12px;color:var(--verde);font-weight:600;cursor:pointer;transition:all .15s}
+.paginacao button:hover:not(:disabled){background:var(--verde);color:white;border-color:var(--verde)}
+.paginacao button:disabled{opacity:.35;cursor:not-allowed}
+.paginacao-info{font-size:12px;color:var(--texto-suave)}
+
+/* DETALHE */
+.detalhe-card{background:white;border:0.5px solid var(--borda);border-radius:14px;padding:20px;position:sticky;top:80px;box-shadow:var(--shadow)}
+.detalhe-vazio{text-align:center;padding:32px 16px;color:var(--texto-suave)}
+.detalhe-vazio .icone{font-size:2rem;margin-bottom:10px}
+.detalhe-vazio p{font-size:13px}
+.detalhe-campo{margin-bottom:14px}
+.detalhe-campo-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--verde-lt);margin-bottom:3px}
+.detalhe-campo-valor{font-size:13px;color:var(--texto);line-height:1.5}
+.detalhe-badges{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+
+/* BLOCO O QUE FALTA */
+.falta-block{background:#f0f7f3;border-left:3px solid var(--verde-md);border-radius:0 10px 10px 0;padding:14px 16px;margin-top:14px}
+.falta-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--verde-md);margin-bottom:6px}
+.falta-texto{font-size:13px;color:var(--verde);line-height:1.5;margin-bottom:8px}
+.falta-acao{font-size:12px;color:var(--verde-md);line-height:1.5;padding-left:12px;border-left:2px solid var(--ouro)}
+
+/* DETALHE ACOES */
+.detalhe-links{display:flex;flex-direction:column;gap:6px;margin-top:14px}
+.detalhe-link{display:block;text-align:center;padding:9px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;cursor:pointer;transition:all .15s}
+.detalhe-link-primary{background:var(--verde);color:white}
+.detalhe-link-primary:hover{background:var(--verde-md)}
+.detalhe-link-sec{background:var(--creme);border:0.5px solid var(--borda);color:var(--verde)}
+.detalhe-link-sec:hover{background:white}
+
+/* COMPARACAO */
+.comparacao-section{background:white;border:0.5px solid var(--borda);border-radius:14px;padding:20px;margin-top:20px;display:none;box-shadow:var(--shadow)}
+.comparacao-section.ativo{display:block}
+.section-titulo{font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--verde);margin-bottom:4px}
+.section-sub{font-size:13px;color:var(--texto-suave);margin-bottom:16px}
+.comparacao-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.comp-card{background:var(--creme);border:0.5px solid var(--borda);border-radius:10px;padding:16px}
+.comp-card h4{font-size:14px;font-weight:600;color:var(--verde);margin-bottom:10px}
+.comp-metricas{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.comp-metrica{background:white;border-radius:7px;padding:8px;text-align:center}
+.comp-metrica span{display:block;font-size:10px;color:var(--texto-suave);margin-bottom:2px}
+.comp-metrica strong{font-size:1.2rem;color:var(--verde);font-family:'Playfair Display',serif}
+
+/* ANALYTICS */
+.analytics-section{background:white;border:0.5px solid var(--borda);border-radius:14px;padding:20px;margin-top:20px;display:none;box-shadow:var(--shadow)}
+.analytics-section.ativo{display:block}
+.analytics-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
+.analytics-kpi{background:var(--creme);border-radius:10px;padding:12px 14px}
+.analytics-kpi span{font-size:11px;color:var(--texto-suave);display:block;margin-bottom:2px}
+.analytics-kpi strong{font-size:14px;font-weight:600;color:var(--verde);display:block}
+.analytics-kpi small{font-size:11px;color:var(--texto-suave)}
+.analytics-grupos{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+.analytics-grupo{background:var(--creme);border-radius:10px;padding:14px}
+.analytics-grupo h5{font-size:13px;font-weight:600;color:var(--verde);margin-bottom:10px}
+.barra-row{margin-bottom:8px}
+.barra-meta{display:flex;justify-content:space-between;font-size:12px;color:var(--texto);margin-bottom:3px}
+.barra-track{background:var(--creme-md);border-radius:999px;height:6px;overflow:hidden}
+.barra-fill{height:100%;border-radius:999px;background:var(--verde-lt);transition:width .3s}
+.temas-chips{display:flex;flex-wrap:wrap;gap:6px}
+.tema-chip{background:white;border:0.5px solid var(--borda);border-radius:999px;padding:4px 12px;font-size:12px;color:var(--verde)}
+.tema-chip small{color:var(--texto-suave);margin-left:4px}
+
+/* RODAPÉ */
+footer{background:var(--verde);color:white;padding:3rem 2rem 2rem;margin-top:4rem}
+.footer-inner{max-width:1200px;margin:0 auto}
+.footer-grid{display:grid;grid-template-columns:2fr 1fr 1fr;gap:2rem;margin-bottom:2rem}
+.footer-marca{font-family:'Playfair Display',serif;font-size:1.3rem;color:white;margin-bottom:8px}
+.footer-marca span{color:var(--ouro)}
+.footer-desc{font-size:13px;color:rgba(255,255,255,0.55);line-height:1.6;max-width:280px}
+.footer-titulo{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--ouro);margin-bottom:12px}
+.footer-links{display:flex;flex-direction:column;gap:8px}
+.footer-link{color:rgba(255,255,255,0.65);font-size:13px;text-decoration:none;transition:color .15s}
+.footer-link:hover{color:white}
+.footer-bottom{border-top:0.5px solid rgba(255,255,255,0.1);padding-top:1.5rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
+.footer-copy{font-size:12px;color:rgba(255,255,255,0.35)}
+.footer-dev{font-size:12px;color:rgba(255,255,255,0.35)}
+.footer-dev a{color:rgba(255,255,255,0.55);text-decoration:none}
+.footer-dev a:hover{color:white}
+
+/* LOADING */
+.loading{display:none;text-align:center;padding:48px}
+.loading.ativo{display:block}
+.spinner{width:36px;height:36px;border:3px solid var(--creme-md);border-top-color:var(--verde);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading p{font-size:13px;color:var(--texto-suave)}
+
+.oculto{display:none!important}
+
+@media(max-width:900px){
+  .resultado-layout{grid-template-columns:1fr}
+  .detalhe-card{position:static}
+  .kpis{grid-template-columns:repeat(2,1fr)}
+  .busca-grid{grid-template-columns:1fr}
+  .busca-row{flex-direction:column}
+  .btn-buscar-hero{width:100%}
+  .features{grid-template-columns:1fr}
+  .footer-grid{grid-template-columns:1fr}
+  .analytics-grupos{grid-template-columns:1fr}
+  .analytics-kpis{grid-template-columns:repeat(2,1fr)}
+}
+@media(max-width:600px){
+  nav{padding:12px 16px}
+  .nav-links{display:none}
+  .hero{padding:2.5rem 1rem 2rem}
+  .container{padding:20px 14px}
+  .kpis{grid-template-columns:repeat(2,1fr)}
+}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-marca">Painel do <span>Legislativo</span></div>
+  <div class="nav-links">
+    <a class="nav-link" href="#busca">Buscar</a>
+    <a class="nav-link" href="#como-funciona">Como funciona</a>
+    <a class="nav-link nav-cta" href="#busca">Começar agora</a>
+  </div>
+</nav>
+
+<section class="hero" id="busca">
+  <div class="hero-chip">Ferramenta de comunicação política</div>
+  <h1>O que deputados e senadores já propuseram sobre qualquer tema.</h1>
+  <p class="hero-sub">Busque por nome, tema ou palavra-chave. Veja onde o projeto está, o que falta acontecer e quem você pode cobrar.</p>
+
+  <div class="busca-hero">
+    <form id="search-form">
+      <div class="busca-grid">
+        <div class="campo-hero">
+          <label>Parlamentar</label>
+          <input type="text" name="nome" placeholder="Ex.: Sargento Portugal…" autocomplete="off"/>
+        </div>
+        <div class="campo-hero">
+          <label>Tema ou palavra-chave</label>
+          <input type="text" name="busca" placeholder="Ex.: aumentar pena, proteger animais, bets, maioridade penal…" autocomplete="off"/>
+        </div>
+      </div>
+      <div class="busca-row">
+        <div class="campo-hero">
+          <label>Casa</label>
+          <select name="casa">
+            <option value="Ambas">Câmara + Senado</option>
+            <option value="Camara">Só Câmara</option>
+            <option value="Senado">Só Senado</option>
+          </select>
+        </div>
+        <div class="campo-hero">
+          <label>Modo de busca</label>
+          <select name="modoBusca">
+            <option value="Todas">Todas as palavras</option>
+            <option value="Qualquer">Qualquer palavra</option>
+          </select>
+        </div>
+        <button class="btn-buscar-hero" type="submit" id="submit-button">🔍 Buscar projetos</button>
+      </div>
+
+      <div class="temas-rapidos">
+        <span class="temas-label">Temas rápidos:</span>
+        <button class="tema-pill" type="button" data-quick-fill="segurança pública">Segurança pública</button>
+        <button class="tema-pill" type="button" data-quick-fill="educação escola">Educação</button>
+        <button class="tema-pill" type="button" data-quick-fill="saúde hospital">Saúde</button>
+        <button class="tema-pill" type="button" data-quick-fill="meio ambiente">Meio ambiente</button>
+        <button class="tema-pill" type="button" data-quick-fill="bets apostas loteria">Bets e apostas</button>
+        <button class="tema-pill" type="button" data-quick-fill="maioridade penal">Maioridade penal</button>
+        <button class="tema-pill" type="button" data-quick-fill="tributação imposto">Tributação</button>
+        <button class="tema-pill" type="button" data-quick-fill="habitação moradia">Habitação</button>
+      </div>
+
+      <button class="toggle-avancado" type="button" id="advanced-toggle" aria-expanded="false">+ Mostrar filtros avançados</button>
+
+      <div class="avancado-grid" id="avancado-grid">
+        <div class="campo-hero">
+          <label>Comparar com</label>
+          <input type="text" name="compararNome" placeholder="Ex.: Sargento Portugal"/>
+        </div>
+        <div class="campo-hero">
+          <label>Siglas</label>
+          <input type="text" name="siglas" placeholder="PL, PEC, PLP"/>
+        </div>
+        <div class="campo-hero">
+          <label>UF</label>
+          <input type="text" name="uf" maxlength="2" placeholder="RJ"/>
+        </div>
+        <div class="campo-hero">
+          <label>Ano inicial</label>
+          <input type="number" name="anoInicial" min="1900" max="2100" placeholder="Ex.: 2020"/>
+        </div>
+        <div class="campo-hero">
+          <label>Ano final</label>
+          <input type="number" name="anoFinal" min="1900" max="2100" placeholder="Ex.: 2026"/>
+        </div>
+        <div class="campo-hero">
+          <label>Limite</label>
+          <input type="number" name="limite" min="1" max="200" value="30"/>
+        </div>
+        <div class="avancado-check">
+          <input type="checkbox" name="somenteAutorPrincipal" id="chk-autor"/>
+          <label for="chk-autor">Mostrar só quando o parlamentar for autor principal</label>
+        </div>
+        <div class="avancado-check">
+          <input type="checkbox" name="semDetalhes" id="chk-sem"/>
+          <label for="chk-sem">Busca rápida (sem puxar andamento detalhado)</label>
+        </div>
+      </div>
+    </form>
+  </div>
+</section>
+
+<section class="features" id="como-funciona">
+  <div class="feature">
+    <div class="feature-icon">🔍</div>
+    <h3>Busque qualquer tema</h3>
+    <p>Câmara e Senado, todos os anos, todos os parlamentares. Escreva do jeito que fala.</p>
+  </div>
+  <div class="feature">
+    <div class="feature-icon">📍</div>
+    <h3>Veja onde está travado</h3>
+    <p>Entenda em que comissão o projeto está parado e o que falta para avançar.</p>
+  </div>
+  <div class="feature">
+    <div class="feature-icon">⚖️</div>
+    <h3>Compare parlamentares</h3>
+    <p>Veja quem propôs mais sobre um tema e em que fase estão os projetos.</p>
+  </div>
+</section>
+
+<div class="container">
+
+  <div id="status-banner" class="status-bar"></div>
+  <div id="warning-stack" class="aviso-stack"></div>
+
+  <section id="assistant-panel" class="ajuste-card"></section>
+
+  <div id="loading" class="loading">
+    <div class="spinner"></div>
+    <p id="loading-msg">Consultando Câmara e Senado…</p>
+  </div>
+
+  <div id="area-resultados" class="oculto">
+
+    <div class="kpis">
+      <div class="kpi"><div class="kpi-num" id="summary-total">0</div><div class="kpi-label">Total encontrado</div></div>
+      <div class="kpi"><div class="kpi-num" id="summary-camara">0</div><div class="kpi-label">Da Câmara</div></div>
+      <div class="kpi"><div class="kpi-num" id="summary-senado">0</div><div class="kpi-label">Do Senado</div></div>
+      <div class="kpi"><div class="kpi-num" id="summary-status">0</div><div class="kpi-label">Com andamento</div></div>
+    </div>
+
+    <div id="active-query" class="query-chips"></div>
+
+    <section id="comparison-panel" class="comparacao-section">
+      <h3 class="section-titulo">Comparação entre parlamentares</h3>
+      <p class="section-sub">Mesmo recorte de tema e filtros aplicado nos dois nomes.</p>
+      <div id="comparison-grid" class="comparacao-grid"></div>
+    </section>
+
+    <div class="resultado-layout">
+
+      <div>
+        <div class="tabela-card">
+          <div class="tabela-topo">
+            <div class="tabela-titulo" id="tabela-titulo">Resultados</div>
+            <div class="tabela-acoes">
+              <button class="btn-sec" id="report-pdf-button" disabled>📄 PDF</button>
+              <button class="btn-sec" id="export-button" disabled>⬇ CSV</button>
+            </div>
+          </div>
+
+          <div class="toolbar">
+            <select id="sort-select">
+              <option value="atividade-desc">Mais recente</option>
+              <option value="atividade-asc">Mais antigo</option>
+              <option value="ano-desc">Ano ↓</option>
+              <option value="ano-asc">Ano ↑</option>
+              <option value="parlamentar-asc">Parlamentar A-Z</option>
+              <option value="status-asc">Status A-Z</option>
+            </select>
+            <select id="page-size-select">
+              <option value="8">8 por página</option>
+              <option value="12" selected>12 por página</option>
+              <option value="20">20 por página</option>
+              <option value="30">30 por página</option>
+            </select>
+            <div class="toolbar-meta" id="results-meta">0 resultados</div>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th>Casa</th>
+                <th>Parlamentar</th>
+                <th>Tipo</th>
+                <th>Número</th>
+                <th>Status</th>
+                <th>Ementa</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="results-body">
+              <tr class="vazio-row"><td colspan="7">Faça uma busca para ver os projetos.</td></tr>
+            </tbody>
+          </table>
+
+          <div class="paginacao">
+            <button id="prev-page-button" disabled>← Anterior</button>
+            <span class="paginacao-info" id="pagination-info">Página 1 de 1</span>
+            <button id="next-page-button" disabled>Próxima →</button>
+          </div>
+        </div>
+
+        <section id="analytics-panel" class="analytics-section">
+          <h3 class="section-titulo">Análise do recorte</h3>
+          <p class="section-sub">Indicadores automáticos com base nos resultados encontrados.</p>
+          <div id="analytics-kpi-grid" class="analytics-kpis"></div>
+          <div class="analytics-grupos">
+            <div class="analytics-grupo">
+              <h5>Distribuição por status</h5>
+              <div id="analytics-status-groups"></div>
+            </div>
+            <div class="analytics-grupo">
+              <h5>Tipos de proposição</h5>
+              <div id="analytics-type-groups"></div>
+            </div>
+          </div>
+          <div class="analytics-grupo">
+            <h5>Temas recorrentes nas ementas</h5>
+            <div id="analytics-theme-groups" class="temas-chips"></div>
+          </div>
+        </section>
+      </div>
+
+      <aside>
+        <div class="detalhe-card" id="detail-panel">
+          <div class="detalhe-vazio">
+            <div class="icone">📄</div>
+            <p>Selecione um projeto na tabela para ver os detalhes e o andamento completo.</p>
+          </div>
+        </div>
+      </aside>
+
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-grid">
+      <div>
+        <div class="footer-marca">Painel do <span>Legislativo</span></div>
+        <p class="footer-desc">Ferramenta de busca e acompanhamento legislativo para comunicação política, gabinetes e cidadãos. Dados oficiais da Câmara dos Deputados e do Senado Federal.</p>
+      </div>
+      <div>
+        <div class="footer-titulo">Contato</div>
+        <div class="footer-links">
+          <a class="footer-link" href="mailto:gabinetesargentoportugal@gmail.com">📧 gabinetesargentoportugal@gmail.com</a>
+          <a class="footer-link" href="https://instagram.com/sargentoportugal" target="_blank" rel="noreferrer">📷 @sargentoportugal</a>
+          <a class="footer-link" href="https://linktr.ee/deputadosargentoportugal" target="_blank" rel="noreferrer">🔗 linktr.ee/deputadosargentoportugal</a>
+        </div>
+      </div>
+      <div>
+        <div class="footer-titulo">Dados oficiais</div>
+        <div class="footer-links">
+          <a class="footer-link" href="https://dadosabertos.camara.leg.br" target="_blank" rel="noreferrer">API Câmara dos Deputados</a>
+          <a class="footer-link" href="https://legis.senado.leg.br/dadosabertos" target="_blank" rel="noreferrer">API Senado Federal</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span class="footer-copy">© 2025 Painel do Legislativo. Dados públicos e abertos.</span>
+      <span class="footer-dev">Desenvolvido por <a href="https://instagram.com/jedimah" target="_blank" rel="noreferrer">Mayara Galvão — @jedimah</a></span>
+    </div>
+  </div>
+</footer>
+
+<script src="./app.js"></script>
+<script>
+// Temas rápidos
+document.querySelectorAll('.tema-pill').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const inp = document.querySelector('[name="busca"]');
+    document.querySelectorAll('.tema-pill').forEach(b => b.classList.remove('ativo'));
+    if (inp.value.trim() === btn.dataset.quickFill) {
+      inp.value = '';
+    } else {
+      inp.value = btn.dataset.quickFill;
+      btn.classList.add('ativo');
+    }
+    inp.dispatchEvent(new Event('input'));
+  });
+});
+
+// Toggle avançado
+const toggleBtn = document.getElementById('advanced-toggle');
+const avancadoGrid = document.getElementById('avancado-grid');
+toggleBtn.addEventListener('click', () => {
+  const aberto = avancadoGrid.classList.toggle('aberto');
+  toggleBtn.setAttribute('aria-expanded', String(aberto));
+  toggleBtn.textContent = aberto ? '− Esconder filtros avançados' : '+ Mostrar filtros avançados';
+});
+
+// Loading e resultados
+const loadingEl = document.getElementById('loading');
+const areaResultados = document.getElementById('area-resultados');
+const statusBanner = document.getElementById('status-banner');
+
+function setStatus(msg, tipo) {
+  statusBanner.textContent = msg;
+  statusBanner.className = 'status-bar ativo' + (tipo ? ' ' + tipo : '');
+}
+
+// Interceptar o app.js para mostrar loading e resultados
+const formEl = document.getElementById('search-form');
+const submitBtn = document.getElementById('submit-button');
+
+// Override do setStatus do app.js se existir
+window._setStatusOriginal = window.setStatus;
+
+// Observar mudanças no status-banner para controlar loading
+const observer = new MutationObserver(() => {
+  const txt = statusBanner.textContent || '';
+  if (txt.includes('Buscando') || txt.includes('Montando') || txt.includes('Consultando')) {
+    loadingEl.classList.add('ativo');
+    areaResultados.classList.add('oculto');
+  } else if (txt.includes('concluída') || txt.includes('encontrado') || txt.includes('encontrados') || txt.includes('resultado')) {
+    loadingEl.classList.remove('ativo');
+    areaResultados.classList.remove('oculto');
+    // Atualiza título da tabela
+    const total = document.getElementById('summary-total')?.textContent || '0';
+    const tituloEl = document.getElementById('tabela-titulo');
+    if (tituloEl) tituloEl.textContent = `${total} projeto${total !== '1' ? 's' : ''} encontrado${total !== '1' ? 's' : ''}`;
+  } else if (txt.length > 0 && !txt.includes('Pronto')) {
+    loadingEl.classList.remove('ativo');
+    if (txt.includes('Falha') || txt.includes('falha') || txt.includes('Erro') || txt.includes('não encontrado')) {
+      statusBanner.className = 'status-bar ativo erro';
+    }
+  }
+});
+observer.observe(statusBanner, { childList: true, characterData: true, subtree: true });
+
+// Analytics — melhorar renderização
+const origAnalyticsStatusGroups = document.getElementById('analytics-status-groups');
+const origAnalyticsTypeGroups = document.getElementById('analytics-type-groups');
+const origAnalyticsThemeGroups = document.getElementById('analytics-theme-groups');
+
+// Monitorar analytics para reformatar barras
+const analyticsObs = new MutationObserver(() => {
+  // Reformatar status groups
+  reformatarBarras('analytics-status-groups');
+  reformatarBarras('analytics-type-groups');
+  reformatarTemas('analytics-theme-groups');
+});
+const analyticsPanel = document.getElementById('analytics-panel');
+if (analyticsPanel) {
+  analyticsObs.observe(analyticsPanel, { childList: true, subtree: true });
+}
+
+function reformatarBarras(id) {
+  const el = document.getElementById(id);
+  if (!el || el.dataset.reformatado) return;
+  const secoes = el.querySelectorAll('.analytics-group');
+  if (!secoes.length) return;
+  el.dataset.reformatado = '1';
+  secoes.forEach(sec => {
+    const barras = sec.querySelectorAll('.analytics-bar-row');
+    barras.forEach(row => {
+      const fill = row.querySelector('.analytics-bar-fill');
+      if (fill) {
+        fill.style.background = 'var(--verde-lt)';
+        fill.style.borderRadius = '999px';
+      }
+    });
+  });
+}
+
+function reformatarTemas(id) {
+  const el = document.getElementById(id);
+  if (!el || el.dataset.reformatado) return;
+  const chips = el.querySelectorAll('.theme-chip');
+  if (!chips.length) return;
+  chips.forEach(chip => {
+    chip.className = 'tema-chip';
+  });
+}
+
+// Ajuste rápido — reformatar
+const assistantPanel = document.getElementById('assistant-panel');
+if (assistantPanel) {
+  new MutationObserver(() => {
+    if (assistantPanel.innerHTML.trim()) {
+      assistantPanel.classList.add('ativo');
+    } else {
+      assistantPanel.classList.remove('ativo');
+    }
+  }).observe(assistantPanel, { childList: true, subtree: true });
+}
+</script>
+</body>
+</html>
