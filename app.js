@@ -42,14 +42,29 @@ const favoritesCount = document.querySelector("#favorites-count");
 const exampleButtons = document.querySelectorAll("[data-example]");
 const quickFillButtons = document.querySelectorAll("[data-quick-fill]");
 
+const DEFAULT_FORM_VALUES = {
+  nome: "",
+  compararNome: "",
+  busca: "",
+  casa: "Ambas",
+  modoBusca: "Todas",
+  siglas: "",
+  uf: "",
+  anoInicial: "",
+  anoFinal: "",
+  limite: "50",
+  somenteAutorPrincipal: false,
+  semDetalhes: false
+};
+
 const EXAMPLES = {
-  pena: {
+  sargento: {
     nome: "Sargento Portugal",
     compararNome: "",
-    busca: "aumenta pena",
-    casa: "Camara",
-    siglas: "PL",
-    limite: "20",
+    busca: "bets",
+    casa: "Ambas",
+    siglas: "",
+    limite: "50",
     modoBusca: "Todas",
     uf: "",
     anoInicial: "",
@@ -57,19 +72,19 @@ const EXAMPLES = {
     somenteAutorPrincipal: false,
     semDetalhes: false
   },
-  maioridade: {
+  tema: {
     nome: "",
     compararNome: "",
-    busca: "maioridade penal",
-    casa: "Camara",
-    siglas: "PL",
-    limite: "30",
-    modoBusca: "Todas",
+    busca: "seguranca publica",
+    casa: "Ambas",
+    siglas: "",
+    limite: "50",
+    modoBusca: "Qualquer",
     uf: "",
     anoInicial: "",
     anoFinal: "",
     somenteAutorPrincipal: false,
-    semDetalhes: true
+    semDetalhes: false
   }
 };
 
@@ -186,6 +201,14 @@ function clearWarnings() {
   warningStack.innerHTML = "";
 }
 
+function getApiUnavailableMessage() {
+  if (window.location.protocol === "file:") {
+    return "A busca precisa do endpoint /api/buscar ativo. Esse HTML aberto direto do computador nao consegue chamar a pasta functions sozinho.";
+  }
+
+  return "Nao consegui falar com /api/buscar. Se a interface abriu mas a busca nao roda, o deploy pode estar sem a pasta functions ou sem suporte a Pages Functions.";
+}
+
 function renderWarnings(warnings = []) {
   clearWarnings();
   warnings.forEach((warning) => {
@@ -210,6 +233,7 @@ function buildAssistantActions(payload) {
 
   if (query.nome && query.casa === "Ambas") {
     actions.push({ id: "house-camara", label: "Tentar so Camara" });
+    actions.push({ id: "house-senado", label: "Tentar so Senado" });
   }
 
   if (query.busca && query.modoBusca !== "Qualquer") {
@@ -224,8 +248,8 @@ function buildAssistantActions(payload) {
     actions.push({ id: "clear-filters", label: "Limpar filtros pesados" });
   }
 
-  if (!query.nome && query.busca && query.casa !== "Camara") {
-    actions.push({ id: "global-camara", label: "Rodar busca global na Camara" });
+  if (!query.nome && query.busca && query.casa !== "Ambas") {
+    actions.push({ id: "house-ambas", label: "Buscar nas duas casas" });
   }
 
   return actions.slice(0, 3);
@@ -372,6 +396,83 @@ function getStatusSummary(item) {
   return {
     phase: "Sem leitura automatica forte",
     note: "Vale abrir o andamento oficial para confirmar o melhor angulo de comunicacao."
+  };
+}
+
+function getActionGuide(item) {
+  const status = item.situacaoAtual || "";
+  const andamento = item.ultimoAndamento || "";
+  const local = item.localAtual || "";
+  const combined = [status, andamento, local].filter(Boolean).join(" ");
+
+  if (!combined.trim()) {
+    return {
+      stage: "Sem sinal automatico forte",
+      next: "Abra a tramitacao oficial para confirmar qual foi o ultimo movimento relevante.",
+      who: "A cobranca deve mirar o orgao em que o texto aparece agora e quem pauta essa etapa.",
+      action: "Use o painel como triagem e confirme no link oficial o ponto exato de pressao."
+    };
+  }
+
+  if (includesAny(combined, ["arquivad", "encerrad", "prejudicad", "devolvid", "retirad"])) {
+    return {
+      stage: "Andamento encerrado ou travado",
+      next: "Hoje nao aparece uma etapa decisiva ativa para esse texto.",
+      who: "Se a ideia for retomar o tema, a pressao costuma migrar para desarquivamento, reapresentacao ou um novo projeto.",
+      action: "Vale usar este item como historico, contexto politico ou base para comparar narrativas."
+    };
+  }
+
+  if (includesAny(combined, ["sancao", "promulgad", "veto", "norma gerada", "lei"])) {
+    return {
+      stage: "Fase final ou pos-aprovacao",
+      next: "A parte legislativa principal parece superada ou muito avancada.",
+      who: "A cobranca faz mais sentido na sancao, na regulamentacao, na implementacao ou na resposta a eventual veto.",
+      action: "Bom recorte para comunicar resultado concreto e o que ainda falta para virar efeito pratico."
+    };
+  }
+
+  if (includesAny(combined, ["apensad", "tramitando em conjunto", "tramita em conjunto"])) {
+    return {
+      stage: "Tramitacao conjunta",
+      next: "O avanco depende do texto principal ao qual esta materia foi anexada ou vinculada.",
+      who: "A cobranca precisa mirar a relatoria, a presidencia do colegiado e a pauta do projeto principal.",
+      action: "Antes de cobrar, vale abrir a tramitacao oficial e identificar qual proposicao passou a comandar o rito."
+    };
+  }
+
+  if (includesAny(combined, ["ordem do dia", "pronta para pauta", "pronto para pauta", "plenario", "plen"])) {
+    return {
+      stage: "Perto de votacao",
+      next: "Falta entrar em pauta e ser votado no colegiado ou no plenario correspondente.",
+      who: "A cobranca pesa mais na presidencia que pauta, nas liderancas e nos parlamentares que votam essa fase.",
+      action: "Aqui a pressao funciona melhor em quem define agenda e em quem decide o voto."
+    };
+  }
+
+  if (includesAny(combined, ["relator", "relatoria", "parecer", "comissao", "ccj", "cas", "cae", "csp", "ce", "cct", "ci", "cdh", "ccdd", "cre", "cra", "cma", "ceesp"])) {
+    return {
+      stage: "Etapa de comissao ou relatoria",
+      next: "O texto ainda precisa de parecer, leitura em colegiado e/ou votacao na comissao em que esta parado.",
+      who: "A cobranca deve olhar para relatoria, presidencia da comissao e membros do colegiado que votam essa fase.",
+      action: "Se o local atual estiver identificado, use esse colegiado como referencia para orientar a pressao."
+    };
+  }
+
+  if (includesAny(combined, ["aguardando despacho", "apresentad", "recebiment", "protocolo", "distribuicao"])) {
+    return {
+      stage: "Fase inicial",
+      next: "O projeto ainda precisa de distribuicao, despacho e definicao do rito inicial.",
+      who: "Nessa fase, a cobranca pesa mais sobre a conducao da Casa e a definicao da etapa seguinte.",
+      action: "Bom para mostrar que o texto existe, mas ainda nao virou pauta madura de votacao."
+    };
+  }
+
+  return {
+    stage: "Tramitacao em andamento",
+    next: "Ha movimentacao registrada, mas vale abrir a tramitacao oficial para confirmar o proximo passo institucional.",
+    who: "A cobranca deve mirar o orgao em que a materia aparece agora e quem pauta ou relata essa fase.",
+    action: "Use o painel como leitura rapida e confirme o ponto exato de pressao no andamento oficial."
   };
 }
 
@@ -730,18 +831,34 @@ function buildSearchLabel(payload) {
   return pieces.filter(Boolean).join(" | ") || "Busca sem titulo";
 }
 
+function getPrimarySearchLabel(payload) {
+  if (payload.nome) {
+    return payload.nome;
+  }
+
+  if (payload.casa === "Senado") {
+    return "Busca ampla no Senado";
+  }
+
+  if (payload.casa === "Camara") {
+    return "Busca ampla na Camara";
+  }
+
+  return "Busca ampla na Camara e no Senado";
+}
+
 function normalizePayload(payload) {
   return {
     nome: payload.nome?.trim() || "",
     compararNome: payload.compararNome?.trim() || "",
     busca: payload.busca?.trim() || "",
-    casa: payload.casa || "Camara",
+    casa: payload.casa || "Ambas",
     modoBusca: payload.modoBusca || "Todas",
     siglas: payload.siglas?.trim() || "",
     uf: payload.uf?.trim().toUpperCase() || "",
     anoInicial: payload.anoInicial?.trim?.() ?? payload.anoInicial ?? "",
     anoFinal: payload.anoFinal?.trim?.() ?? payload.anoFinal ?? "",
-    limite: payload.limite?.trim?.() ?? payload.limite ?? "30",
+    limite: payload.limite?.trim?.() ?? payload.limite ?? "50",
     somenteAutorPrincipal: Boolean(payload.somenteAutorPrincipal),
     semDetalhes: Boolean(payload.semDetalhes)
   };
@@ -755,7 +872,7 @@ function hasAdvancedValues(payload) {
     }
 
     if (field === "limite") {
-      return String(value || "") !== "30";
+      return String(value || "") !== "50";
     }
 
     return String(value || "").trim() !== "";
@@ -802,19 +919,12 @@ function applyPayloadToForm(payload) {
 }
 
 function saveDraft(payload) {
-  localStorage.setItem(STORAGE_KEYS.draft, JSON.stringify(normalizePayload(payload)));
+  void payload;
 }
 
 function loadDraft() {
-  const payload = safeJsonParse(localStorage.getItem(STORAGE_KEYS.draft), null);
-  if (payload) {
-    applyPayloadToForm(payload);
-    return;
-  }
-
-  form.elements.casa.value = "Camara";
-  form.elements.modoBusca.value = "Todas";
-  syncAdvancedToggle();
+  localStorage.removeItem(STORAGE_KEYS.draft);
+  applyPayloadToForm(DEFAULT_FORM_VALUES);
 }
 
 function syncFavoriteFlags(items = []) {
@@ -881,8 +991,7 @@ function renderQueryChips(payload) {
     query.anoFinal ? `Ano final: ${query.anoFinal}` : null,
     query.modoBusca ? `Modo: ${query.modoBusca}` : null,
     query.somenteAutorPrincipal ? "Somente autor principal" : null,
-    query.semDetalhes ? "Sem detalhamento" : null,
-    uiState.showFavoritesOnly ? "So favoritos" : null
+    query.semDetalhes ? "Sem detalhamento" : null
   ].filter(Boolean);
 
   chips.forEach((label) => {
@@ -895,7 +1004,7 @@ function renderQueryChips(payload) {
 
 function renderResultsMeta(totalItems, visibleItems, totalPages) {
   if (!totalItems) {
-    resultsMeta.textContent = uiState.showFavoritesOnly ? "0 favoritos neste recorte" : "0 resultados";
+    resultsMeta.textContent = "0 resultados";
     paginationInfo.textContent = "Pagina 1 de 1";
     prevPageButton.disabled = true;
     nextPageButton.disabled = true;
@@ -904,8 +1013,7 @@ function renderResultsMeta(totalItems, visibleItems, totalPages) {
 
   const start = (uiState.currentPage - 1) * uiState.pageSize + 1;
   const end = start + visibleItems.length - 1;
-  const prefix = uiState.showFavoritesOnly ? "Favoritos" : "Mostrando";
-  resultsMeta.textContent = `${prefix} ${start}-${end} de ${totalItems} item(ns)`;
+  resultsMeta.textContent = `Mostrando ${start}-${end} de ${totalItems} item(ns)`;
   paginationInfo.textContent = `Pagina ${uiState.currentPage} de ${totalPages}`;
   prevPageButton.disabled = uiState.currentPage <= 1;
   nextPageButton.disabled = uiState.currentPage >= totalPages;
@@ -1045,6 +1153,10 @@ function renderAnalyticsPanel(items = [], sourceMeta = []) {
 }
 
 function renderSavedSearches() {
+  if (!savedSearchesList || !savedSearchesCount) {
+    return;
+  }
+
   const entries = getSavedSearches();
   savedSearchesCount.textContent = String(entries.length);
 
@@ -1072,6 +1184,10 @@ function renderSavedSearches() {
 }
 
 function renderFavoritesList() {
+  if (!favoritesList || !favoritesCount) {
+    return;
+  }
+
   const favorites = Object.values(getFavoritesMap()).sort((left, right) =>
     String(right.savedAt || "").localeCompare(String(left.savedAt || ""))
   );
@@ -1111,7 +1227,7 @@ function renderDetail(item) {
         <p class="eyebrow">Detalhe</p>
         <h3>Selecione um item para abrir o painel lateral.</h3>
         <p>
-          Aqui mostramos ementa completa, ultimo andamento, autoria, datas, favoritos e links oficiais.
+          Aqui mostramos ementa completa, ultimo andamento, o que falta acontecer, quem pode destravar e links oficiais.
         </p>
       </div>
     `;
@@ -1126,6 +1242,7 @@ function renderDetail(item) {
     item._sourceLabel ? `<span class="detail-chip">${escapeHtml(item._sourceLabel)}</span>` : ""
   ].filter(Boolean).join("");
   const reading = getStatusSummary(item);
+  const actionGuide = getActionGuide(item);
 
   detailPanel.innerHTML = `
     <div class="detail-content">
@@ -1181,6 +1298,17 @@ function renderDetail(item) {
       </section>
 
       <section class="detail-section">
+        <h4>O que falta agora</h4>
+        <p class="detail-copy"><strong>${escapeHtml(actionGuide.stage)}.</strong> ${escapeHtml(actionGuide.next)}</p>
+      </section>
+
+      <section class="detail-section">
+        <h4>Quem pode destravar</h4>
+        <p class="detail-copy">${escapeHtml(actionGuide.who)}</p>
+        <p class="detail-copy">${escapeHtml(actionGuide.action)}</p>
+      </section>
+
+      <section class="detail-section">
         <h4>Leitura para comunicacao</h4>
         <p class="detail-copy"><strong>${escapeHtml(reading.phase)}.</strong> ${escapeHtml(reading.note)}</p>
       </section>
@@ -1198,18 +1326,19 @@ function renderResults(items, selectedKey) {
   if (!items.length) {
     resultsBody.innerHTML = `
       <tr class="empty-row">
-        <td colspan="7">${uiState.showFavoritesOnly ? "Nenhum favorito aparece neste recorte atual." : "Nenhum resultado encontrado com esse recorte. Tente os atalhos de ajuste acima."}</td>
+        <td colspan="7">Nenhum resultado encontrado com esse recorte. Tente os atalhos de ajuste acima.</td>
       </tr>
     `;
     return;
   }
 
   resultsBody.innerHTML = items.map((item) => {
+    const actionGuide = getActionGuide(item);
     const casaClass = item.casa?.toLowerCase() || "";
     const andamento = item.ultimoAndamento
       ? `
         <details>
-          <summary>Ultimo andamento</summary>
+          <summary>Ver andamento</summary>
           <p>${escapeHtml(item.ultimoAndamento)}</p>
         </details>
       `
@@ -1246,6 +1375,7 @@ function renderResults(items, selectedKey) {
             ${statusMarkup(item.situacaoAtual)}
             <small>${escapeHtml(item.localAtual || "")}</small>
             <small>${escapeHtml(item.dataSituacao || item.dataUltimoAndamento || item.dataApresentacao || "")}</small>
+            <small><strong>Falta:</strong> ${escapeHtml(truncate(actionGuide.next, 110))}</small>
           </div>
         </td>
         <td>
@@ -1259,6 +1389,178 @@ function renderResults(items, selectedKey) {
             <button class="favorite-trigger ${item._isFavorite ? "is-active" : ""}" type="button" data-favorite-key="${escapeHtml(item._key)}" aria-label="Favoritar">
               ${item._isFavorite ? "★" : "☆"}
             </button>
+            <button class="detail-trigger" type="button" data-detail-key="${escapeHtml(item._key)}">Ver detalhe</button>
+            <a href="${escapeHtml(item.link || "#")}" target="_blank" rel="noreferrer">Abrir tramitacao</a>
+            ${item.linkPdfOriginal ? `<a href="${escapeHtml(item.linkPdfOriginal)}" target="_blank" rel="noreferrer">Arquivo original</a>` : ""}
+            ${item.linkApi ? `<a href="${escapeHtml(item.linkApi)}" target="_blank" rel="noreferrer">Abrir API</a>` : ""}
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join("");
+}
+
+function renderDetailPublic(item) {
+  if (!item) {
+    detailPanel.innerHTML = `
+      <div class="detail-empty">
+        <p class="eyebrow">Detalhe</p>
+        <h3>Selecione um item para abrir o painel lateral.</h3>
+        <p>
+          Aqui mostramos ementa completa, ultimo andamento, o que falta acontecer, quem pode destravar e links oficiais.
+        </p>
+      </div>
+    `;
+    return;
+  }
+
+  const badges = [
+    `<span class="badge ${escapeHtml((item.casa || "").toLowerCase())}">${escapeHtml(item.casa || "-")}</span>`,
+    item.tipo ? `<span class="detail-chip strong">${escapeHtml(item.tipo)}</span>` : "",
+    item.autorPrincipal === true ? '<span class="detail-chip warm">Autor principal</span>' : "",
+    item.tramitando ? `<span class="detail-chip">${escapeHtml(item.tramitando)}</span>` : "",
+    item._sourceLabel ? `<span class="detail-chip">${escapeHtml(item._sourceLabel)}</span>` : ""
+  ].filter(Boolean).join("");
+  const reading = getStatusSummary(item);
+  const actionGuide = getActionGuide(item);
+
+  detailPanel.innerHTML = `
+    <div class="detail-content">
+      <div class="detail-header">
+        <div class="detail-badges">${badges}</div>
+        <div>
+          <h3 class="detail-title">${escapeHtml(item.identificacao || `${item.tipo || "-"} ${item.numero || "-"} / ${item.ano || "-"}`)}</h3>
+          <p class="detail-subtitle">${escapeHtml(item.parlamentar || "Parlamentar nao identificado")}${item.partido ? ` / ${escapeHtml(item.partido)}` : ""}${item.uf ? ` / ${escapeHtml(item.uf)}` : ""}</p>
+        </div>
+        <p class="detail-summary">${escapeHtml(item.tipoDescricao || "Sem descricao de tipo.")}</p>
+      </div>
+
+      <section class="detail-section">
+        <h4>Ementa</h4>
+        <p class="detail-copy">${escapeHtml(item.ementa || "Sem ementa disponivel.")}</p>
+      </section>
+
+      <section class="detail-section">
+        <h4>Leitura rapida</h4>
+        <div class="detail-metrics">
+          <div class="detail-metric">
+            <span class="detail-meta-label">Situacao</span>
+            <span class="detail-meta-value">${escapeHtml(item.situacaoAtual || "Sem detalhamento")}</span>
+          </div>
+          <div class="detail-metric">
+            <span class="detail-meta-label">Local</span>
+            <span class="detail-meta-value">${escapeHtml(item.localAtual || "Nao informado")}</span>
+          </div>
+          <div class="detail-metric">
+            <span class="detail-meta-label">Apresentacao</span>
+            <span class="detail-meta-value">${escapeHtml(item.dataApresentacao || "Nao informada")}</span>
+          </div>
+          <div class="detail-metric">
+            <span class="detail-meta-label">Ultima data</span>
+            <span class="detail-meta-value">${escapeHtml(item.dataUltimoAndamento || item.dataSituacao || "Nao informada")}</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="detail-section">
+        <h4>Autoria</h4>
+        <p class="detail-copy">${escapeHtml(item.autores || item.parlamentar || "Nao informada")}</p>
+      </section>
+
+      <section class="detail-section">
+        <h4>Ultimo andamento</h4>
+        <p class="detail-copy">${escapeHtml(item.ultimoAndamento || "Sem andamento detalhado nesta consulta.")}</p>
+      </section>
+
+      <section class="detail-section">
+        <h4>O que falta agora</h4>
+        <p class="detail-copy"><strong>${escapeHtml(actionGuide.stage)}.</strong> ${escapeHtml(actionGuide.next)}</p>
+      </section>
+
+      <section class="detail-section">
+        <h4>Quem pode destravar</h4>
+        <p class="detail-copy">${escapeHtml(actionGuide.who)}</p>
+        <p class="detail-copy">${escapeHtml(actionGuide.action)}</p>
+      </section>
+
+      <section class="detail-section">
+        <h4>Leitura para comunicacao</h4>
+        <p class="detail-copy"><strong>${escapeHtml(reading.phase)}.</strong> ${escapeHtml(reading.note)}</p>
+      </section>
+
+      <div class="detail-actions">
+        <a class="detail-link" href="${escapeHtml(item.link || "#")}" target="_blank" rel="noreferrer">Abrir tramitacao</a>
+        ${item.linkPdfOriginal ? `<a class="detail-link secondary" href="${escapeHtml(item.linkPdfOriginal)}" target="_blank" rel="noreferrer">Arquivo original</a>` : ""}
+        ${item.linkApi ? `<a class="detail-link secondary" href="${escapeHtml(item.linkApi)}" target="_blank" rel="noreferrer">Abrir API</a>` : ""}
+      </div>
+    </div>
+  `;
+}
+
+function renderResultsPublic(items, selectedKey) {
+  if (!items.length) {
+    resultsBody.innerHTML = `
+      <tr class="empty-row">
+        <td colspan="7">Nenhum resultado encontrado com esse recorte. Tente os atalhos de ajuste acima.</td>
+      </tr>
+    `;
+    return;
+  }
+
+  resultsBody.innerHTML = items.map((item) => {
+    const actionGuide = getActionGuide(item);
+    const casaClass = item.casa?.toLowerCase() || "";
+    const andamento = item.ultimoAndamento
+      ? `
+        <details>
+          <summary>Ver andamento</summary>
+          <p>${escapeHtml(item.ultimoAndamento)}</p>
+        </details>
+      `
+      : "";
+    const isSelected = item._key === selectedKey;
+
+    return `
+      <tr class="result-row ${isSelected ? "is-selected" : ""}" data-row-key="${escapeHtml(item._key)}" tabindex="0">
+        <td>
+          <span class="badge ${casaClass}">${escapeHtml(item.casa || "-")}</span>
+        </td>
+        <td>
+          <div class="item-meta">
+            <p class="item-title">${escapeHtml(item.parlamentar || "-")}</p>
+            <small>${escapeHtml(item.partido || "--")}${item.uf ? ` / ${escapeHtml(item.uf)}` : ""}</small>
+            ${item._sourceLabel && item._sourceLabel !== item.parlamentar ? `<small><strong>Grupo:</strong> ${escapeHtml(item._sourceLabel)}</small>` : ""}
+            ${item.autores && item.autores !== item.parlamentar ? `<small><strong>Autores:</strong> ${escapeHtml(truncate(item.autores, 140))}</small>` : ""}
+          </div>
+        </td>
+        <td>
+          <div class="item-meta">
+            <strong>${escapeHtml(item.tipo || "-")}</strong>
+            <small>${escapeHtml(item.tipoDescricao || "")}</small>
+          </div>
+        </td>
+        <td>
+          <div class="item-meta">
+            <strong>${escapeHtml(item.numero || "-")}/${escapeHtml(item.ano || "-")}</strong>
+            <small>${escapeHtml(item.identificacao || "")}</small>
+          </div>
+        </td>
+        <td>
+          <div class="item-meta">
+            ${statusMarkup(item.situacaoAtual)}
+            <small>${escapeHtml(item.localAtual || "")}</small>
+            <small>${escapeHtml(item.dataSituacao || item.dataUltimoAndamento || item.dataApresentacao || "")}</small>
+            <small><strong>Falta:</strong> ${escapeHtml(truncate(actionGuide.next, 110))}</small>
+          </div>
+        </td>
+        <td>
+          <div class="item-copy">
+            <small>${escapeHtml(item.ementa || "Sem ementa disponivel.")}</small>
+            ${andamento}
+          </div>
+        </td>
+        <td>
+          <div class="item-links">
             <button class="detail-trigger" type="button" data-detail-key="${escapeHtml(item._key)}">Ver detalhe</button>
             <a href="${escapeHtml(item.link || "#")}" target="_blank" rel="noreferrer">Abrir tramitacao</a>
             ${item.linkPdfOriginal ? `<a href="${escapeHtml(item.linkPdfOriginal)}" target="_blank" rel="noreferrer">Arquivo original</a>` : ""}
@@ -1294,6 +1596,9 @@ function exportCsv(items) {
     "UltimoAndamento",
     "Ementa",
     "LeituraResumo",
+    "OQueFaltaAgora",
+    "QuemPodeDestravar",
+    "ComoCobrar",
     "LinkPdfOriginal",
     "Link"
   ];
@@ -1302,6 +1607,7 @@ function exportCsv(items) {
     toCsvRow(headers),
     ...items.map((item) => {
       const reading = getStatusSummary(item);
+      const actionGuide = getActionGuide(item);
       return toCsvRow([
         item.casa,
         item.parlamentar,
@@ -1319,6 +1625,9 @@ function exportCsv(items) {
         item.ultimoAndamento,
         item.ementa,
         `${reading.phase}. ${reading.note}`,
+        `${actionGuide.stage}. ${actionGuide.next}`,
+        actionGuide.who,
+        actionGuide.action,
         item.linkPdfOriginal,
         item.link
       ]);
@@ -1353,6 +1662,7 @@ function buildReportHtml(items, payload) {
 
   const cards = items.map((item, index) => {
     const reading = getStatusSummary(item);
+    const actionGuide = getActionGuide(item);
     return `
       <article class="report-item">
         <div class="report-item-head">
@@ -1374,6 +1684,12 @@ function buildReportHtml(items, payload) {
           <h4>Leitura para comunicacao</h4>
           <p>${escapeHtml(reading.note)}</p>
           <p><strong>Ultimo andamento:</strong> ${escapeHtml(item.ultimoAndamento || "Sem andamento detalhado nesta consulta.")}</p>
+        </section>
+        <section class="report-reading">
+          <h4>O que falta acontecer</h4>
+          <p><strong>${escapeHtml(actionGuide.stage)}.</strong> ${escapeHtml(actionGuide.next)}</p>
+          <p><strong>Quem pode destravar:</strong> ${escapeHtml(actionGuide.who)}</p>
+          <p><strong>Como orientar a cobranca:</strong> ${escapeHtml(actionGuide.action)}</p>
         </section>
         <div class="report-links">
           <a href="${escapeHtml(item.link || "#")}" target="_blank" rel="noreferrer">Tramitacao oficial</a>
@@ -1495,8 +1811,23 @@ function buildApiParams(payload, overrideNome = null) {
 
 async function fetchQuery(payload, sourceLabel, overrideNome = null) {
   const params = buildApiParams(payload, overrideNome);
-  const response = await fetch(`/api/buscar?${params.toString()}`);
-  const data = await response.json();
+  let response;
+
+  try {
+    response = await fetch(`/api/buscar?${params.toString()}`);
+  } catch (error) {
+    throw new Error(getApiUnavailableMessage());
+  }
+
+  let data = {};
+
+  try {
+    data = await response.json();
+  } catch {
+    if (!response.ok) {
+      throw new Error("A API respondeu em um formato inesperado. Verifique o deploy do endpoint /api/buscar.");
+    }
+  }
 
   if (!response.ok) {
     throw new Error(data.error || "Falha ao consultar a API.");
@@ -1578,6 +1909,10 @@ function getViewModel() {
 }
 
 function renderFavoritesFilterButton() {
+  if (!favoritesFilterButton) {
+    return;
+  }
+
   favoritesFilterButton.classList.toggle("is-active", uiState.showFavoritesOnly);
   favoritesFilterButton.textContent = uiState.showFavoritesOnly
     ? "Voltando para todos"
@@ -1596,10 +1931,10 @@ function renderApp({ selectFirstVisible = false } = {}) {
     visibleItems[0] ||
     null;
 
-  renderResults(visibleItems, uiState.selectedKey);
+  renderResultsPublic(visibleItems, uiState.selectedKey);
   renderResultsMeta(totalItems, visibleItems, totalPages);
   renderAssistantPanel(lastPayload);
-  renderDetail(nextSelected);
+  renderDetailPublic(nextSelected);
   renderAnalyticsPanel(sortedItems, lastPayload?.sources || []);
   renderFavoritesFilterButton();
 }
@@ -1712,6 +2047,12 @@ async function runAssistantAction(actionId) {
     case "house-camara":
       patchCurrentForm({ casa: "Camara" });
       break;
+    case "house-senado":
+      patchCurrentForm({ casa: "Senado" });
+      break;
+    case "house-ambas":
+      patchCurrentForm({ casa: "Ambas" });
+      break;
     case "mode-any":
       patchCurrentForm({ modoBusca: "Qualquer" });
       break;
@@ -1727,9 +2068,6 @@ async function runAssistantAction(actionId) {
         somenteAutorPrincipal: false
       });
       break;
-    case "global-camara":
-      patchCurrentForm({ casa: "Camara" });
-      break;
     default:
       return;
   }
@@ -1744,7 +2082,9 @@ async function submitSearch() {
   submitButton.disabled = true;
   exportButton.disabled = true;
   reportPdfButton.disabled = true;
-  saveSearchButton.disabled = true;
+  if (saveSearchButton) {
+    saveSearchButton.disabled = true;
+  }
   setStatus(payload.compararNome ? "Montando comparacao e puxando os projetos..." : "Buscando projetos e organizando o recorte...", false);
   renderWarnings([]);
 
@@ -1760,7 +2100,7 @@ async function submitSearch() {
 
     const responses = [];
 
-    const primaryLabel = payload.nome || "Busca global na Camara";
+    const primaryLabel = getPrimarySearchLabel(payload);
     responses.push(await fetchQuery(payload, primaryLabel, payload.nome || null));
 
     if (compareName) {
@@ -1803,7 +2143,9 @@ async function submitSearch() {
     setStatus(error.message || "Falha inesperada ao consultar os dados.", false);
   } finally {
     submitButton.disabled = false;
-    saveSearchButton.disabled = false;
+    if (saveSearchButton) {
+      saveSearchButton.disabled = false;
+    }
   }
 }
 
@@ -1818,14 +2160,13 @@ advancedToggleButton?.addEventListener("click", () => {
   syncAdvancedToggle(getFormPayload());
 });
 
-saveSearchButton.addEventListener("click", () => {
+saveSearchButton?.addEventListener("click", () => {
   saveCurrentSearch();
 });
 
 clearButton.addEventListener("click", () => {
   form.reset();
-  form.elements.casa.value = "Camara";
-  form.elements.modoBusca.value = "Todas";
+  applyPayloadToForm(DEFAULT_FORM_VALUES);
   localStorage.removeItem(STORAGE_KEYS.draft);
   lastPayload = null;
   uiState.currentPage = 1;
@@ -1854,7 +2195,7 @@ reportPdfButton.addEventListener("click", () => {
   }
 });
 
-favoritesFilterButton.addEventListener("click", () => {
+favoritesFilterButton?.addEventListener("click", () => {
   uiState.showFavoritesOnly = !uiState.showFavoritesOnly;
   uiState.currentPage = 1;
   renderQueryChips(lastPayload || { query: {} });
@@ -1894,6 +2235,10 @@ nextPageButton.addEventListener("click", () => {
 });
 
 resultsBody.addEventListener("click", (event) => {
+  if (event.target.closest("summary, details")) {
+    return;
+  }
+
   if (event.target.closest("a")) {
     return;
   }
@@ -1920,6 +2265,10 @@ resultsBody.addEventListener("click", (event) => {
 
 resultsBody.addEventListener("keydown", (event) => {
   if (event.key !== "Enter" && event.key !== " ") {
+    return;
+  }
+
+  if (event.target.closest("summary, details, a, button, input, select, textarea")) {
     return;
   }
 
@@ -1951,7 +2300,7 @@ assistantPanel?.addEventListener("click", async (event) => {
   await runAssistantAction(button.dataset.assistantAction);
 });
 
-savedSearchesList.addEventListener("click", async (event) => {
+savedSearchesList?.addEventListener("click", async (event) => {
   const applyButton = event.target.closest("[data-apply-search]");
   if (applyButton) {
     const entry = getSavedSearches().find((item) => item.id === applyButton.dataset.applySearch);
@@ -1970,7 +2319,7 @@ savedSearchesList.addEventListener("click", async (event) => {
   }
 });
 
-favoritesList.addEventListener("click", (event) => {
+favoritesList?.addEventListener("click", (event) => {
   const openButton = event.target.closest("[data-open-favorite]");
   if (openButton) {
     openFavorite(openButton.dataset.openFavorite);
@@ -1996,16 +2345,11 @@ exampleButtons.forEach((button) => {
 });
 
 quickFillButtons.forEach((button) => {
-  button.addEventListener("click", () => {
+  button.addEventListener("click", async () => {
     form.elements.busca.value = button.dataset.quickFill || "";
     saveDraft(getFormPayload());
-    setStatus("Tema preenchido. Agora busque com o nome do parlamentar ou rode a busca global na Camara.", false);
-    if (form.elements.nome.value.trim()) {
-      void submitSearch();
-      return;
-    }
-
-    form.elements.nome.focus();
+    setStatus("Tema preenchido. Rodando a busca com o recorte atual...", false);
+    await submitSearch();
   });
 });
 
@@ -2014,4 +2358,8 @@ renderSavedSearches();
 renderFavoritesList();
 renderComparisonPanel({ sources: [] });
 renderApp();
-setStatus("Pronto para pesquisar. Comece so com nome + tema e abra os filtros avancados apenas se precisar.", false);
+if (window.location.protocol === "file:") {
+  setStatus("Interface carregada. Para a busca funcionar, abra o projeto por um servidor ou pelo deploy com /api/buscar ativo.", false);
+} else {
+  setStatus("Pronto para pesquisar. Comece so com nome, tema ou os dois e abra os filtros avancados apenas se precisar.", false);
+}
