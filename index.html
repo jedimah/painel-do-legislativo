@@ -21,21 +21,21 @@
       <header class="hero">
         <div class="hero-ribbon">
           <span class="hero-chip">Painel do Legislativo</span>
-          <span class="hero-chip hero-chip-muted">Briefing, comparacao e leitura do andamento</span>
+          <span class="hero-chip hero-chip-muted">Projetos, parlamentares e leitura do andamento</span>
         </div>
 
         <div class="hero-main">
           <div class="hero-copy">
-            <p class="eyebrow">Mesa de briefing politico</p>
-            <h1>Descubra rapido o que deputados e senadores ja propuseram sobre qualquer tema.</h1>
+            <p class="eyebrow">Pesquisa legislativa para qualquer pessoa</p>
+            <h1>Descubra o que deputados e senadores ja propuseram e acompanhe como cada projeto esta andando.</h1>
             <p class="hero-text">
-              Feito para quem precisa responder com clareza: buscar, comparar, baixar,
-              entender onde o projeto esta parado e orientar a cobranca na etapa certa.
+              Pesquise por nome, tema ou projeto especifico, entenda em que fase ele esta,
+              veja o que falta acontecer e encontre os links oficiais sem depender dos portais tecnicos.
             </p>
 
             <div class="hero-actions">
               <button class="ghost-pill" type="button" data-example="sargento">
-                Exemplo: Sargento Portugal + bets
+                Exemplo: Sargento Portugal + seguranca publica
               </button>
               <button class="ghost-pill" type="button" data-example="tema">
                 Exemplo: so tema + seguranca publica
@@ -53,7 +53,7 @@
               </article>
               <article class="hero-point">
                 <strong>Compare e exporte</strong>
-                <span>Use comparacao, analytics, CSV e PDF para briefing, fala, conteudo e cobranca.</span>
+                <span>Use comparacao, analytics, CSV e PDF para reunir informacoes e compartilhar resultados com facilidade.</span>
               </article>
             </div>
           </div>
@@ -61,17 +61,17 @@
           <aside class="hero-panel">
             <div class="hero-panel-head">
               <p class="eyebrow">O que voce descobre aqui</p>
-              <h2>Uma ferramenta de briefing, nao um painel burocratico.</h2>
+              <h2>Uma forma mais simples de entender projetos, autores e andamento.</h2>
             </div>
 
             <div class="scenario-grid">
               <article class="scenario-card">
-                <strong>"Quero ver tudo o que ja propuseram sobre bets."</strong>
+                <strong>"Quero ver tudo o que ja propuseram sobre seguranca publica."</strong>
                 <span>Busque por tema amplo, sem nome, e vasculhe resultados da Camara e do Senado.</span>
               </article>
               <article class="scenario-card">
-                <strong>"Quero comparar dois nomes no mesmo recorte."</strong>
-                <span>Rode o mesmo tema com dois parlamentares e veja volume, status e tipos de projeto.</span>
+                <strong>"Quero saber quais projetos esse deputado ja apresentou."</strong>
+                <span>Busque por nome, refine por tema, ano ou tipo e veja o historico daquele parlamentar.</span>
               </article>
               <article class="scenario-card">
                 <strong>"Quero saber onde esta travado e quem pode destravar."</strong>
@@ -107,7 +107,7 @@
 
                 <label class="field field-wide field-primary">
                   <span>Tema ou palavra-chave</span>
-                  <input type="text" name="busca" placeholder="Ex.: aumentar pena, proteger animais, bets, maioridade penal..." />
+                  <input type="text" name="busca" placeholder="Ex.: seguranca publica, aumentar pena, proteger animais, maioridade penal..." />
                 </label>
 
                 <div class="quick-guide field-wide">
@@ -156,10 +156,42 @@
                   <input type="text" name="compararNome" placeholder="Ex.: outro nome para comparar no mesmo tema" />
                 </label>
 
-                <label class="field field-advanced">
-                  <span>Siglas</span>
-                  <input type="text" name="siglas" placeholder="PL, PEC, PLP" />
-                </label>
+                <div class="field field-wide field-advanced field-siglas">
+                  <div class="field-heading">
+                    <span>Tipo da proposicao</span>
+                    <small>Se nao marcar nada, o painel pesquisa todos os tipos dentro do recorte atual.</small>
+                  </div>
+                  <input type="hidden" name="siglas" value="" />
+                  <details class="sigla-picker" id="sigla-picker">
+                    <summary class="sigla-picker-summary">
+                      <div>
+                        <strong id="sigla-picker-title">Todos os tipos</strong>
+                        <small id="sigla-picker-meta">Nenhum tipo marcado. O painel vai considerar todas as siglas.</small>
+                      </div>
+                    </summary>
+
+                    <div class="sigla-picker-panel">
+                      <div class="sigla-picker-actions">
+                        <button type="button" class="sigla-action" id="sigla-select-common">Marcar mais pesquisados</button>
+                        <button type="button" class="sigla-action" id="sigla-select-all">Selecionar todos</button>
+                        <button type="button" class="sigla-action" id="sigla-clear-all">Limpar selecao</button>
+                      </div>
+
+                      <section class="sigla-section">
+                        <div class="sigla-section-head">
+                          <h3>Tipos mais pesquisados</h3>
+                          <p>Ideal para quem nao sabe a sigla exata e quer refinar por categorias mais comuns.</p>
+                        </div>
+                        <div class="sigla-grid" id="sigla-common-list"></div>
+                      </section>
+
+                      <details class="sigla-extra">
+                        <summary>Outros tipos</summary>
+                        <div class="sigla-grid sigla-grid-compact" id="sigla-extra-list"></div>
+                      </details>
+                    </div>
+                  </details>
+                </div>
 
                 <label class="field field-advanced">
                   <span>UF</span>
@@ -209,7 +241,7 @@
                   <h2>O que voce encontra quando abre um resultado</h2>
                 </div>
                 <p class="section-note">
-                  O foco aqui nao e so listar projetos. E transformar tramitacao em algo util para briefing e cobranca.
+                  O foco aqui nao e so listar projetos. E transformar a tramitacao em algo claro para qualquer pessoa.
                 </p>
               </div>
 
@@ -239,8 +271,8 @@
             <article class="support-card">
               <div class="support-head">
                 <div>
-                  <p class="eyebrow">Para comunicacao</p>
-                  <h3>Use em briefing, fala e conteudo</h3>
+                  <p class="eyebrow">Para acompanhar parlamentares</p>
+                  <h3>Veja o que cada nome ja propoe ou apoiou</h3>
                 </div>
               </div>
               <p class="support-copy">
@@ -251,8 +283,8 @@
             <article class="support-card">
               <div class="support-head">
                 <div>
-                  <p class="eyebrow">Para cidadania</p>
-                  <h3>Entenda a etapa e direcione a cobranca</h3>
+                  <p class="eyebrow">Para entender a tramitacao</p>
+                  <h3>Saiba o que falta acontecer com cada projeto</h3>
                 </div>
               </div>
               <p class="support-copy">
@@ -454,9 +486,9 @@
         <div class="site-footer-grid">
           <div>
             <p class="eyebrow">Painel do Legislativo</p>
-            <h3>Busca legislativa para briefing, conteudo e cobranca cidada.</h3>
+            <h3>Busca legislativa para entender projetos, parlamentares e andamento.</h3>
             <p>
-              Dados oficiais da Camara dos Deputados e do Senado Federal, organizados numa interface pensada para pessoas comuns e para comunicacao politica.
+              Dados oficiais da Camara dos Deputados e do Senado Federal, organizados numa interface pensada para pessoas comuns entenderem o que foi proposto, em que fase esta e o que falta acontecer.
             </p>
           </div>
 

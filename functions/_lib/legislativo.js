@@ -8,6 +8,15 @@ const STOPWORDS = new Set([
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
+const REQUEST_RETRY_ATTEMPTS = 3;
+const RETRYABLE_STATUS_CODES = new Set([408, 425, 429, 500, 502, 503, 504]);
+const CAMARA_SEARCH_PAGE_SIZE = 20;
+const CAMARA_NAMED_OFFICIAL_MAX_PAGES = 20;
+const CAMARA_NAMED_OFFICIAL_TARGET_ITEMS = 400;
+const CAMARA_GLOBAL_OFFICIAL_MAX_PAGES = 12;
+const CAMARA_GLOBAL_OFFICIAL_TARGET_ITEMS = 240;
+const SEARCH_CACHE_TTL_MS = 5 * 60 * 1000;
+const searchCache = new Map();
 
 export function httpError(status, message, details) {
   const error = new Error(message);
@@ -72,6 +81,20 @@ function parseYear(value) {
   return Number.isNaN(parsed) ? 0 : parsed;
 }
 
+function normalizeYearRange(start, end) {
+  if (start > 0 && end > 0 && start > end) {
+    return {
+      anoInicial: end,
+      anoFinal: start
+    };
+  }
+
+  return {
+    anoInicial: start,
+    anoFinal: end
+  };
+}
+
 function parseSiglas(value) {
   if (!value) {
     return [];
@@ -95,6 +118,14 @@ function compressWhitespace(text) {
   }
 
   return String(text).replace(/\s+/g, " ").trim() || null;
+}
+
+function stripHtml(text) {
+  if (!text) {
+    return null;
+  }
+
+  return compressWhitespace(String(text).replace(/<[^>]+>/g, " "));
 }
 
 function firstNonEmpty(values) {
@@ -137,6 +168,45 @@ function normalizeText(text) {
     .replace(/[^A-Z0-9 ]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function appendWarning(warnings, message) {
+  if (!message || !Array.isArray(warnings)) {
+    return;
+  }
+
+  if (!warnings.includes(message)) {
+    warnings.push(message);
+  }
+}
+
+function buildSearchCacheKey(scope, payload) {
+  return `${scope}:${JSON.stringify(payload)}`;
+}
+
+function getSearchCache(key) {
+  const entry = searchCache.get(key);
+  if (!entry) {
+    return null;
+  }
+
+  if ((Date.now() - entry.timestamp) > SEARCH_CACHE_TTL_MS) {
+    searchCache.delete(key);
+    return null;
+  }
+
+  return entry.value;
+}
+
+function setSearchCache(key, value) {
+  searchCache.set(key, {
+    timestamp: Date.now(),
+    value
+  });
 }
 
 function getSearchTokens(text) {
@@ -240,38 +310,72 @@ function normalizeQueryName(params) {
 }
 
 async function fetchJson(url) {
-  const response = await fetch(url, {
-    headers: {
-      Accept: "application/json",
-      "User-Agent": "monitor-parlamentar-federal-web/1.0"
-    }
-  });
+  for (let attempt = 1; attempt <= REQUEST_RETRY_ATTEMPTS; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        headers: {
+          Accept: "application/json",
+          "User-Agent": "monitor-parlamentar-federal-web/1.0"
+        }
+      });
 
-  if (!response.ok) {
-    const text = await response.text();
-    throw httpError(response.status, `Falha ao consultar ${url}`, text.slice(0, 500));
+      if (response.ok) {
+        return response.json();
+      }
+
+      const text = await response.text();
+      const error = httpError(response.status, `Falha ao consultar ${url}`, text.slice(0, 500));
+      if (!RETRYABLE_STATUS_CODES.has(response.status) || attempt === REQUEST_RETRY_ATTEMPTS) {
+        throw error;
+      }
+    } catch (error) {
+      const status = Number(error?.status || 0);
+      const retryable = !status || RETRYABLE_STATUS_CODES.has(status);
+      if (!retryable || attempt === REQUEST_RETRY_ATTEMPTS) {
+        throw error;
+      }
+    }
+
+    await sleep(150 * attempt);
   }
 
-  return response.json();
+  throw httpError(500, `Falha ao consultar ${url}`);
 }
 
 async function postJson(url, body) {
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      "User-Agent": "monitor-parlamentar-federal-web/1.0"
-    },
-    body: JSON.stringify(body)
-  });
+  for (let attempt = 1; attempt <= REQUEST_RETRY_ATTEMPTS; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "User-Agent": "monitor-parlamentar-federal-web/1.0"
+        },
+        body: JSON.stringify(body)
+      });
 
-  if (!response.ok) {
-    const text = await response.text();
-    throw httpError(response.status, `Falha ao consultar ${url}`, text.slice(0, 500));
+      if (response.ok) {
+        return response.json();
+      }
+
+      const text = await response.text();
+      const error = httpError(response.status, `Falha ao consultar ${url}`, text.slice(0, 500));
+      if (!RETRYABLE_STATUS_CODES.has(response.status) || attempt === REQUEST_RETRY_ATTEMPTS) {
+        throw error;
+      }
+    } catch (error) {
+      const status = Number(error?.status || 0);
+      const retryable = !status || RETRYABLE_STATUS_CODES.has(status);
+      if (!retryable || attempt === REQUEST_RETRY_ATTEMPTS) {
+        throw error;
+      }
+    }
+
+    await sleep(150 * attempt);
   }
 
-  return response.json();
+  throw httpError(500, `Falha ao consultar ${url}`);
 }
 
 function buildParams(rawParams) {
@@ -281,8 +385,12 @@ function buildParams(rawParams) {
   const modoBusca = normalizeMode(rawParams.modoBusca);
   const siglas = parseSiglas(rawParams.siglas);
   const uf = compressWhitespace(rawParams.uf)?.toUpperCase() || null;
-  const anoInicial = parseYear(rawParams.anoInicial);
-  const anoFinal = parseYear(rawParams.anoFinal);
+  const normalizedYears = normalizeYearRange(
+    parseYear(rawParams.anoInicial),
+    parseYear(rawParams.anoFinal)
+  );
+  const anoInicial = normalizedYears.anoInicial;
+  const anoFinal = normalizedYears.anoFinal;
   const limit = parseLimit(rawParams.limite);
   const somenteAutorPrincipal = normalizeBoolean(rawParams.somenteAutorPrincipal);
   const semDetalhes = normalizeBoolean(rawParams.semDetalhes);
@@ -487,25 +595,21 @@ function getCamaraBaseSearchText(baseItem) {
     .map((theme) => theme?.tema)
     .filter(Boolean)
     .join("; ");
-  const portalStates = ensureArray(portalSource.estados)
-    .map((state) => firstNonEmpty([state?.descricaoExterna, state?.descricao, state?.apelido, state?.sigla]))
-    .filter(Boolean)
-    .join("; ");
+  const portalHighlights = ensureArray(portalSource.highlightText).join("; ");
 
   return [
     baseItem.siglaTipo,
     baseItem.numero,
     baseItem.ano,
     baseItem.ementa,
+    portalSource.titulo,
+    portalSource.descricaoProposicao,
     portalSource.indexacao,
     portalSource.explicacaoEmenta,
-    portalSource.situacaoAtual,
-    portalSource.tipoSituacaoProposicao,
-    portalSource.nomeOrgaoOrigem,
     portalAuthors,
     portalThemes,
     portalAutoThemes,
-    portalStates
+    portalHighlights
   ].filter(Boolean).join(" ");
 }
 
@@ -551,7 +655,14 @@ function getResultSearchText(item) {
   ].filter(Boolean).join(" ");
 }
 
-async function getCamaraBaseItemsByDeputado(parlamentar, params) {
+async function getCamaraBaseItemsByDeputado(parlamentar, params, warnings = []) {
+  if (params.busca && params.apiKeywordQuery) {
+    const officialItems = await getCamaraBaseItemsByDeputadoFromSearchApi(parlamentar, params, warnings);
+    if (officialItems.length > 0) {
+      return officialItems;
+    }
+  }
+
   const items = [];
   let page = 1;
   const canStopEarly = !(params.somenteAutorPrincipal || params.busca);
@@ -563,10 +674,6 @@ async function getCamaraBaseItemsByDeputado(parlamentar, params) {
     url.searchParams.set("itens", "100");
     url.searchParams.set("ordem", "DESC");
     url.searchParams.set("ordenarPor", "id");
-
-    if (params.busca && params.apiKeywordQuery) {
-      url.searchParams.set("keywords", params.apiKeywordQuery);
-    }
 
     if (params.siglas.length === 1) {
       url.searchParams.set("siglaTipo", params.siglas[0]);
@@ -605,27 +712,60 @@ async function getCamaraBaseItemsByDeputado(parlamentar, params) {
   return items;
 }
 
-function buildCamaraSearchApiPayload(params, page) {
-  return {
-    q: params.apiKeywordQuery,
+function buildCamaraSearchApiPayload(params, page, queryOverride = null) {
+  const payload = {
+    q: queryOverride || params.apiKeywordQuery,
     pagina: page,
     order: "relevancia"
   };
+
+  if (params.anoInicial > 0) {
+    payload.dataInicial = `${params.anoInicial}-01-01`;
+  }
+
+  if (params.anoFinal > 0) {
+    payload.dataFinal = `${params.anoFinal}-12-31`;
+  }
+
+  if (params.siglas.length === 1) {
+    payload.siglaProposicao = params.siglas[0];
+  }
+
+  return payload;
+}
+
+function buildCamaraDeputadoSearchQueries(parlamentar, params) {
+  const baseQuery = firstNonEmpty([params.apiKeywordQuery]);
+  return baseQuery ? [baseQuery] : [];
+}
+
+function extractCamaraPortalHighlightText(hit) {
+  const highlight = hit?.highlight || {};
+  return Object.values(highlight)
+    .flatMap((value) => ensureArray(value))
+    .map((fragment) => stripHtml(fragment))
+    .filter(Boolean)
+    .join("; ");
 }
 
 function mapCamaraPortalHit(hit) {
   const source = hit?._source || {};
   const id = Number(source.id || 0) || null;
+  const highlightText = extractCamaraPortalHighlightText(hit);
 
   return {
     id,
+    searchScore: Number(hit?._score || 0) || 0,
     siglaTipo: firstNonEmpty([source.siglaProposicao]),
     numero: Number(source.numero || 0) || null,
     ano: Number(source.ano || source.anoApresentacao || 0) || null,
     ementa: compressWhitespace(source.ementa),
     dataApresentacao: firstNonEmpty([source.dataApresentacao, source.dataOrdenacao]),
     uri: id ? `https://dadosabertos.camara.leg.br/api/v2/proposicoes/${id}` : null,
-    portalSource: source
+    portalSource: {
+      ...source,
+      highlightText
+    }
   };
 }
 
@@ -642,28 +782,185 @@ function matchesCamaraPortalFilters(baseItem, params) {
   return authors.some((author) => String(author?.siglaUF || "").toUpperCase() === params.uf);
 }
 
-async function getCamaraBaseItemsGlobalFromSearchApi(params) {
+function matchesCamaraPortalParlamentar(baseItem, parlamentar) {
+  const authors = ensureArray(baseItem?.portalSource?.autores);
+  if (authors.length === 0) {
+    return true;
+  }
+
+  const wantedCode = Number(parlamentar?.codigo || 0) || null;
+  const wantedName = normalizeText(parlamentar?.nome);
+  const wantedUf = String(parlamentar?.uf || "").toUpperCase();
+  const wantedPartido = String(parlamentar?.partido || "").toUpperCase();
+
+  return authors.some((author) => {
+    const authorCode = Number(author?.ideCadastro || author?.idCadastro || 0) || null;
+    if (wantedCode && authorCode && authorCode === wantedCode) {
+      return true;
+    }
+
+    const authorName = normalizeText(author?.nome || author?.nomeAutor);
+    if (!wantedName || authorName !== wantedName) {
+      return false;
+    }
+
+    const authorUf = String(author?.siglaUF || "").toUpperCase();
+    if (wantedUf && authorUf && authorUf !== wantedUf) {
+      return false;
+    }
+
+    const authorPartido = String(author?.siglaPartido || "").toUpperCase();
+    if (wantedPartido && authorPartido && authorPartido !== wantedPartido) {
+      return false;
+    }
+
+    return true;
+  });
+}
+
+async function getCamaraBaseItemsByDeputadoFromSearchApi(parlamentar, params, warnings = []) {
+  if (!params.apiKeywordQuery) {
+    throw httpError(400, "A busca por deputado precisa de palavras-chave.");
+  }
+
+  const cacheKey = buildSearchCacheKey("camara-deputado-oficial", {
+    codigo: parlamentar?.codigo || null,
+    nome: parlamentar?.nome || null,
+    uf: parlamentar?.uf || null,
+    partido: parlamentar?.partido || null,
+    busca: params.apiKeywordQuery,
+    siglas: params.siglas,
+    anoInicial: params.anoInicial,
+    anoFinal: params.anoFinal
+  });
+  const cached = getSearchCache(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const queries = buildCamaraDeputadoSearchQueries(parlamentar, params);
+  const seen = new Set();
+  const allItems = [];
+  let hadFailure = false;
+
+  for (const query of queries) {
+    let page = 1;
+    let totalPages = 1;
+
+    while (page <= totalPages && page <= CAMARA_NAMED_OFFICIAL_MAX_PAGES) {
+      let response;
+      try {
+        response = await postJson(
+          "https://www.camara.leg.br/busca-api/api/v1/busca/proposicoes/_search",
+          buildCamaraSearchApiPayload(params, page, query)
+        );
+      } catch (_) {
+        hadFailure = true;
+        appendWarning(
+          warnings,
+          `A busca ampla da Câmara respondeu com instabilidade no recorte "${params.queryLabel}". O sistema manteve os resultados já coletados.`
+        );
+        break;
+      }
+      const totalHits = Number(response?.hits?.total?.value || 0);
+      const hits = ensureArray(response?.hits?.hits);
+
+      totalPages = Math.max(1, Math.ceil(totalHits / CAMARA_SEARCH_PAGE_SIZE));
+      if (hits.length === 0) {
+        break;
+      }
+
+      for (const hit of hits) {
+        const item = mapCamaraPortalHit(hit);
+        if (!item.id || seen.has(item.id)) {
+          continue;
+        }
+
+        seen.add(item.id);
+
+        const keep = matterFilters({
+          sigla: item.siglaTipo,
+          ano: Number(item.ano),
+          autorPrincipal: false,
+          supportsAutorPrincipal: false
+        }, params)
+          && matchesCamaraPortalFilters(item, params)
+          && matchesCamaraPortalParlamentar(item, parlamentar);
+
+        if (keep) {
+          allItems.push(item);
+        }
+      }
+
+      if (allItems.length >= CAMARA_NAMED_OFFICIAL_TARGET_ITEMS) {
+        return allItems;
+      }
+
+      if (page >= totalPages) {
+        break;
+      }
+
+      page += 1;
+    }
+
+    if (allItems.length >= CAMARA_NAMED_OFFICIAL_TARGET_ITEMS) {
+      break;
+    }
+  }
+
+  if (hadFailure && allItems.length === 0) {
+    appendWarning(
+      warnings,
+      `A busca oficial da Câmara não conseguiu responder por completo ao recorte "${params.queryLabel}". O sistema tentou manter a busca com a base alternativa.`
+    );
+  }
+
+  setSearchCache(cacheKey, allItems);
+  return allItems;
+}
+
+async function getCamaraBaseItemsGlobalFromSearchApi(params, warnings = []) {
   if (!params.apiKeywordQuery) {
     throw httpError(400, "A busca global precisa de palavras-chave.");
   }
 
+  const cacheKey = buildSearchCacheKey("camara-global-oficial", {
+    busca: params.apiKeywordQuery,
+    siglas: params.siglas,
+    uf: params.uf,
+    anoInicial: params.anoInicial,
+    anoFinal: params.anoFinal
+  });
+  const cached = getSearchCache(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
   const seen = new Set();
   const allItems = [];
-  const pageSize = 20;
-  const targetItems = params.limit > 0 ? Math.max(params.limit * 3, 60) : 200;
-  const hardMaxPages = params.limit > 0 ? Math.max(Math.ceil(targetItems / pageSize) + 2, 6) : 25;
   let page = 1;
   let totalPages = 1;
+  let hadFailure = false;
 
-  while (page <= totalPages && page <= hardMaxPages) {
-    const response = await postJson(
-      "https://www.camara.leg.br/busca-api/api/v1/busca/proposicoes/_search",
-      buildCamaraSearchApiPayload(params, page)
-    );
+  while (page <= totalPages && page <= CAMARA_GLOBAL_OFFICIAL_MAX_PAGES) {
+    let response;
+    try {
+      response = await postJson(
+        "https://www.camara.leg.br/busca-api/api/v1/busca/proposicoes/_search",
+        buildCamaraSearchApiPayload(params, page)
+      );
+    } catch (_) {
+      hadFailure = true;
+      appendWarning(
+        warnings,
+        `A busca ampla da Câmara respondeu com instabilidade no recorte "${params.queryLabel}". O sistema manteve os resultados já coletados.`
+      );
+      break;
+    }
     const totalHits = Number(response?.hits?.total?.value || 0);
     const hits = ensureArray(response?.hits?.hits);
 
-    totalPages = Math.max(1, Math.ceil(totalHits / pageSize));
+    totalPages = Math.max(1, Math.ceil(totalHits / CAMARA_SEARCH_PAGE_SIZE));
     if (hits.length === 0) {
       break;
     }
@@ -690,28 +987,32 @@ async function getCamaraBaseItemsGlobalFromSearchApi(params) {
       }
     }
 
-    if (params.limit > 0 && allItems.length >= targetItems) {
+    if (allItems.length >= CAMARA_GLOBAL_OFFICIAL_TARGET_ITEMS) {
       break;
     }
 
     page += 1;
   }
 
+  if (hadFailure && allItems.length === 0) {
+    appendWarning(
+      warnings,
+      `A busca oficial da Câmara não conseguiu responder por completo ao recorte "${params.queryLabel}". O sistema tentou manter a busca com a base alternativa.`
+    );
+  }
+
+  setSearchCache(cacheKey, allItems);
   return allItems;
 }
 
-async function getCamaraBaseItemsGlobal(params) {
+async function getCamaraBaseItemsGlobal(params, warnings = []) {
   if (!params.apiKeywordQuery) {
     throw httpError(400, "A busca global precisa de palavras-chave.");
   }
 
-  try {
-    const officialItems = await getCamaraBaseItemsGlobalFromSearchApi(params);
-    if (officialItems.length > 0) {
-      return officialItems;
-    }
-  } catch (_) {
-    // Fall back to Dados Abertos if the broader official search is unavailable.
+  const officialItems = await getCamaraBaseItemsGlobalFromSearchApi(params, warnings);
+  if (officialItems.length > 0) {
+    return officialItems;
   }
 
   // Tipos de proposição para busca ampla — igual ao site oficial da Câmara
@@ -902,6 +1203,7 @@ function convertSenadoProcessResult(baseItem, parlamentar, detail) {
 
   return {
     casa: "Senado",
+    relevanceScore: Number(baseItem?.searchScore || 0) || 0,
     parlamentar: authorSummary.displayName || parlamentar.nome,
     uf: authorSummary.uf || parlamentar.uf || null,
     partido: authorSummary.partido || parlamentar.partido || null,
@@ -1068,14 +1370,17 @@ function summarizeCamaraPortalAuthors(authors, parlamentar) {
   const roster = (visible.length > 0 ? visible : ordered)
     .map((author) => author?.nome)
     .filter(Boolean);
+  const primaryMatchesQuery = parlamentar?.codigo
+    ? matchesCamaraPortalParlamentar({ portalSource: { autores: [primary] } }, parlamentar)
+    : null;
 
   return {
     displayName: firstNonEmpty([primary?.nome, parlamentar?.nome, "Autor nao identificado"]),
-    queryIsPrimary: parlamentar?.codigo ? Number(primary?.codParlamentar || 0) === Number(parlamentar.codigo || 0) : null,
+    queryIsPrimary: primaryMatchesQuery === true ? true : (parlamentar?.codigo ? false : null),
     allNames: [...new Set(roster)].join("; "),
     partido: firstNonEmpty([primary?.siglaPartido]),
     uf: firstNonEmpty([primary?.siglaUF]),
-    codigoParlamentar: Number(primary?.codParlamentar || 0) || null
+    codigoParlamentar: Number(primary?.ideCadastro || primary?.codParlamentar || 0) || null
   };
 }
 
@@ -1094,6 +1399,7 @@ function convertCamaraResult(baseItem, parlamentar, detail, authorSummary) {
 
   return {
     casa: "Camara",
+    relevanceScore: Number(baseItem.searchScore || 0) || 0,
     parlamentar: displayName,
     uf: authorSummary?.uf || parlamentar.uf || null,
     partido: authorSummary?.partido || parlamentar.partido || null,
@@ -1145,6 +1451,7 @@ function convertSenadoResult(baseItem, parlamentar, movimentacao, textoOriginal)
 
   return {
     casa: "Senado",
+    relevanceScore: 0,
     parlamentar: parlamentar.nome,
     uf: parlamentar.uf || null,
     partido: parlamentar.partido || null,
@@ -1176,6 +1483,7 @@ function buildErrorItem({ casa, parlamentar, baseItem, errorMessage }) {
   if (casa === "Camara") {
     return {
       casa: "Camara",
+      relevanceScore: Number(baseItem?.searchScore || 0) || 0,
       parlamentar: parlamentar?.nome || "Autor não identificado",
       uf: parlamentar?.uf || null,
       partido: parlamentar?.partido || null,
@@ -1205,6 +1513,7 @@ function buildErrorItem({ casa, parlamentar, baseItem, errorMessage }) {
   if (!baseItem?.Materia) {
     return {
       casa: "Senado",
+      relevanceScore: Number(baseItem?.searchScore || 0) || 0,
       parlamentar: compressWhitespace(String(baseItem?.autoria || "").split(",")[0]) || parlamentar.nome,
       uf: parlamentar?.uf || null,
       partido: parlamentar?.partido || null,
@@ -1233,6 +1542,7 @@ function buildErrorItem({ casa, parlamentar, baseItem, errorMessage }) {
 
   return {
     casa: "Senado",
+    relevanceScore: Number(baseItem?.searchScore || 0) || 0,
     parlamentar: parlamentar.nome,
     uf: parlamentar.uf || null,
     partido: parlamentar.partido || null,
@@ -1259,8 +1569,16 @@ function buildErrorItem({ casa, parlamentar, baseItem, errorMessage }) {
   };
 }
 
-function sortResults(items) {
+function sortResults(items, params) {
   return [...items].sort((left, right) => {
+    if (params?.busca) {
+      const rightScore = Number(right.relevanceScore || 0) || 0;
+      const leftScore = Number(left.relevanceScore || 0) || 0;
+      if (rightScore !== leftScore) {
+        return rightScore - leftScore;
+      }
+    }
+
     const rightTimestamp = Date.parse(String(
       right.dataSituacao ||
       right.dataUltimoAndamento ||
@@ -1301,29 +1619,90 @@ function summarise(items) {
   return counts;
 }
 
+function sliceBalancedByHouse(items, limit) {
+  if (!(limit > 0)) {
+    return items;
+  }
+
+  const byHouse = {
+    Camara: items.filter((item) => item.casa === "Camara"),
+    Senado: items.filter((item) => item.casa === "Senado")
+  };
+  const housesWithItems = Object.keys(byHouse).filter((house) => byHouse[house].length > 0);
+
+  if (housesWithItems.length < 2) {
+    return items.slice(0, limit);
+  }
+
+  const queues = Object.fromEntries(
+    housesWithItems.map((house) => [house, [...byHouse[house]]])
+  );
+  const selected = [];
+  let cursor = 0;
+
+  while (selected.length < limit) {
+    const house = housesWithItems[cursor % housesWithItems.length];
+    const nextItem = queues[house].shift();
+    if (nextItem) {
+      selected.push(nextItem);
+    }
+
+    const hasPending = housesWithItems.some((currentHouse) => queues[currentHouse].length > 0);
+    if (!hasPending) {
+      break;
+    }
+
+    cursor += 1;
+  }
+
+  return selected.slice(0, limit);
+}
+
+function resultMatchesFinalFilters(item, params) {
+  if (!item) {
+    return false;
+  }
+
+  if (!matterFilters({
+    sigla: item.tipo,
+    ano: Number(item.ano),
+    autorPrincipal: item.autorPrincipal,
+    supportsAutorPrincipal: item.autorPrincipal === true || item.autorPrincipal === false
+  }, params)) {
+    return false;
+  }
+
+  if (!params.nome && params.uf && String(item.uf || "").toUpperCase() !== params.uf) {
+    return false;
+  }
+
+  return testSearchMatch(getResultSearchText(item), params);
+}
+
 async function runCamaraSearch(parlamentar, params, warnings) {
   const baseItems = parlamentar.codigo
-    ? await getCamaraBaseItemsByDeputado(parlamentar, params)
-    : await getCamaraBaseItemsGlobal(params);
+    ? await getCamaraBaseItemsByDeputado(parlamentar, params, warnings)
+    : await getCamaraBaseItemsGlobal(params, warnings);
+  const candidateItems = params.limit > 0 ? baseItems.slice(0, MAX_LIMIT) : baseItems;
 
   const items = [];
 
-  for (const baseItem of baseItems) {
+  for (const baseItem of candidateItems) {
     try {
       let detail = null;
       let authorSummary = null;
 
-      if (!parlamentar.codigo || params.somenteAutorPrincipal) {
-        if (!parlamentar.codigo && ensureArray(baseItem?.portalSource?.autores).length > 0) {
-          authorSummary = summarizeCamaraPortalAuthors(baseItem.portalSource.autores, parlamentar);
-        } else {
-          const authors = await getCamaraAutores(baseItem.id, baseItem.uriAutores);
-          authorSummary = summarizeCamaraAuthors(authors, parlamentar);
-        }
+      if (ensureArray(baseItem?.portalSource?.autores).length > 0) {
+        authorSummary = summarizeCamaraPortalAuthors(baseItem.portalSource.autores, parlamentar);
+      }
 
-        if (params.somenteAutorPrincipal && authorSummary.queryIsPrimary !== true) {
-          continue;
-        }
+      if (!authorSummary && (!parlamentar.codigo || params.somenteAutorPrincipal)) {
+        const authors = await getCamaraAutores(baseItem.id, baseItem.uriAutores);
+        authorSummary = summarizeCamaraAuthors(authors, parlamentar);
+      }
+
+      if (params.somenteAutorPrincipal && authorSummary?.queryIsPrimary !== true) {
+        continue;
       }
 
       if (!params.semDetalhes) {
@@ -1331,7 +1710,7 @@ async function runCamaraSearch(parlamentar, params, warnings) {
       }
 
       const item = convertCamaraResult(baseItem, parlamentar, detail, authorSummary);
-      if (testSearchMatch(getResultSearchText(item), params)) {
+      if (resultMatchesFinalFilters(item, params)) {
         items.push(item);
       }
     } catch (error) {
@@ -1342,14 +1721,11 @@ async function runCamaraSearch(parlamentar, params, warnings) {
         errorMessage: error.message
       });
 
-      if (testSearchMatch(getResultSearchText(item), params)) {
+      if (resultMatchesFinalFilters(item, params)) {
         items.push(item);
       }
     }
 
-    if (params.limit > 0 && items.length >= params.limit) {
-      return items.slice(0, params.limit);
-    }
   }
 
   if (!parlamentar.codigo && params.limit > 0 && items.length === 0) {
@@ -1363,7 +1739,7 @@ async function runSenadoSearch(parlamentar, params) {
   const baseItems = parlamentar.codigo
     ? await getSenadoBaseItems(parlamentar, params)
     : await getSenadoBaseItemsGlobal(params);
-  const sliced = params.limit > 0 ? baseItems.slice(0, params.limit) : baseItems;
+  const sliced = params.limit > 0 ? baseItems.slice(0, MAX_LIMIT) : baseItems;
   const items = [];
 
   for (const baseItem of sliced) {
@@ -1381,7 +1757,7 @@ async function runSenadoSearch(parlamentar, params) {
         item = convertSenadoProcessResult(baseItem, parlamentar, detail);
       }
 
-      if (testSearchMatch(getResultSearchText(item), params)) {
+      if (resultMatchesFinalFilters(item, params)) {
         items.push(item);
       }
     } catch (error) {
@@ -1392,7 +1768,7 @@ async function runSenadoSearch(parlamentar, params) {
         errorMessage: error.message
       });
 
-      if (testSearchMatch(getResultSearchText(item), params)) {
+      if (resultMatchesFinalFilters(item, params)) {
         items.push(item);
       }
     }
@@ -1441,9 +1817,11 @@ export async function buscarMaterias(rawParams) {
     }
   }
 
-  items = sortResults(items);
+  items = sortResults(items, params);
   if (params.limit > 0) {
-    items = items.slice(0, params.limit);
+    items = params.casa === "Ambas"
+      ? sliceBalancedByHouse(items, params.limit)
+      : items.slice(0, params.limit);
   }
 
   return {

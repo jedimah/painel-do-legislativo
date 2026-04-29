@@ -41,6 +41,14 @@ const favoritesList = document.querySelector("#favorites-list");
 const favoritesCount = document.querySelector("#favorites-count");
 const exampleButtons = document.querySelectorAll("[data-example]");
 const quickFillButtons = document.querySelectorAll("[data-quick-fill]");
+const siglaPicker = document.querySelector("#sigla-picker");
+const siglaPickerTitle = document.querySelector("#sigla-picker-title");
+const siglaPickerMeta = document.querySelector("#sigla-picker-meta");
+const siglaCommonList = document.querySelector("#sigla-common-list");
+const siglaExtraList = document.querySelector("#sigla-extra-list");
+const siglaSelectCommonButton = document.querySelector("#sigla-select-common");
+const siglaSelectAllButton = document.querySelector("#sigla-select-all");
+const siglaClearAllButton = document.querySelector("#sigla-clear-all");
 
 const DEFAULT_FORM_VALUES = {
   nome: "",
@@ -61,7 +69,7 @@ const EXAMPLES = {
   sargento: {
     nome: "Sargento Portugal",
     compararNome: "",
-    busca: "bets",
+    busca: "seguranca publica",
     casa: "Ambas",
     siglas: "",
     limite: "50",
@@ -87,6 +95,161 @@ const EXAMPLES = {
     semDetalhes: false
   }
 };
+
+const SIGLA_COMMON_TYPES = [
+  { code: "PEC", label: "Proposta de Emenda a Constituicao" },
+  { code: "PLP", label: "Projeto de Lei Complementar" },
+  { code: "PL", label: "Projeto de Lei" },
+  { code: "MPV", label: "Medida Provisoria" },
+  { code: "PLV", label: "Projeto de Lei de Conversao" },
+  { code: "PDL", label: "Projeto de Decreto Legislativo" },
+  { code: "PRC", label: "Projeto de Resolucao" },
+  { code: "REQ", label: "Requerimento" },
+  { code: "RIC", label: "Requerimento de Informacao" },
+  { code: "RCP", label: "Requerimento de Instituicao de CPI" },
+  { code: "MSC", label: "Mensagem" },
+  { code: "INC", label: "Indicacao" }
+];
+
+const SIGLA_OTHER_TYPES = [
+  { code: "AA", label: "Autografo" },
+  { code: "ADD", label: "Adendo" },
+  { code: "AJECN", label: "Ajuste de Emenda Orcamentaria (CN)" },
+  { code: "ANEXO", label: "Anexo" },
+  { code: "APJ", label: "Anteprojeto" },
+  { code: "ATACN", label: "Ata (CN)" },
+  { code: "ATC", label: "Ato Convocatorio" },
+  { code: "AV", label: "Aviso" },
+  { code: "AVN", label: "Aviso (CN)" },
+  { code: "CAC", label: "Comunicado de Alteracao do Controle Societario" },
+  { code: "CAE", label: "Relatorio do CAE" },
+  { code: "CCN", label: "Consulta do Congresso Nacional" },
+  { code: "CFIS", label: "Relatorio de Atividades do Comite de Avaliacao, Fiscalizacao e Controle de Execucao Orcamentaria" },
+  { code: "CMC", label: "Comunicacao de Medida Cautelar" },
+  { code: "COI", label: "Relatorio do COI" },
+  { code: "CON", label: "Consulta" },
+  { code: "CVO", label: "Complementacao de Voto" },
+  { code: "CVR", label: "Contestacao ao Voto do Relator" },
+  { code: "DCR", label: "Denuncia por Crime de Responsabilidade" },
+  { code: "DEC", label: "Decisao" },
+  { code: "DEN", label: "Denuncia" },
+  { code: "DOC", label: "Oficio da Primeira-Secretaria" },
+  { code: "DOCCPI", label: "Documento de CPI" },
+  { code: "DTN", label: "Destaque (CN)" },
+  { code: "DTQ", label: "Destaque" },
+  { code: "DVT", label: "Declaracao de Voto" },
+  { code: "ECN", label: "Emenda (CN)" },
+  { code: "EMA", label: "Emenda Aglutinativa" },
+  { code: "EMC", label: "Emenda na Comissao" },
+  { code: "EMC-A", label: "Emenda Adotada pela Comissao" },
+  { code: "EMD", label: "Emenda" },
+  { code: "EML", label: "Emenda a LDO" },
+  { code: "EMO", label: "Emenda ao Orcamento" },
+  { code: "EMP", label: "Emenda de Plenario" },
+  { code: "EMPV", label: "Emenda a Medida Provisoria (CN)" },
+  { code: "EMR", label: "Emenda de Relator" },
+  { code: "EMRP", label: "Emenda de Relator Parcial" },
+  { code: "EMS", label: "Emenda/Substitutivo do Senado" },
+  { code: "EPP", label: "Emenda ao Plano Plurianual" },
+  { code: "ERD", label: "Emenda de Redacao" },
+  { code: "ERD-A", label: "Emenda de Redacao Adotada" },
+  { code: "ERR", label: "Errata" },
+  { code: "ESB", label: "Emenda ao Substitutivo" },
+  { code: "ESP", label: "Emenda Substitutiva de Plenario" },
+  { code: "INA", label: "Indicacao de Autoridade" },
+  { code: "MAD", label: "Manifestacao do(a) Denunciado(a)" },
+  { code: "MCN", label: "Mensagem (CN)" },
+  { code: "MIP", label: "Minuta de Proposicao Legislativa" },
+  { code: "MMP", label: "Mensagem (MPU)" },
+  { code: "MSF", label: "Mensagem (SF)" },
+  { code: "MSG", label: "Mensagem (SF)" },
+  { code: "MST", label: "Mensagem (STF)" },
+  { code: "MTC", label: "Mensagem (TCU)" },
+  { code: "NIC", label: "Norma Interna" },
+  { code: "OBJ", label: "Objeto de Deliberacao" },
+  { code: "OF", label: "Oficio Externo" },
+  { code: "OFM", label: "Oficio a Mesa" },
+  { code: "OFN", label: "Oficio (CN)" },
+  { code: "OFS", label: "Oficio do Senado Federal" },
+  { code: "PAR", label: "Parecer de Comissao" },
+  { code: "PARF", label: "Parecer de Comissao para Redacao Final" },
+  { code: "PDN", label: "Projeto de Decreto Legislativo (CN)" },
+  { code: "PDS", label: "Projeto de Decreto Legislativo (SF)" },
+  { code: "PEP", label: "Parecer as Emendas de Plenario" },
+  { code: "PES", label: "Parecer as Emendas Apresentadas ao Substitutivo do Relator" },
+  { code: "PET", label: "Peticao" },
+  { code: "PFC", label: "Proposta de Fiscalizacao e Controle" },
+  { code: "PIN", label: "Proposta de Instrucao Normativa" },
+  { code: "PLC", label: "Projeto de Lei da Camara dos Deputados (SF)" },
+  { code: "PLN", label: "Projeto de Lei (CN)" },
+  { code: "PLS", label: "Projeto de Lei do Senado Federal" },
+  { code: "PPP", label: "Parecer Proferido em Plenario" },
+  { code: "PPR", label: "Parecer Reformulado de Plenario" },
+  { code: "PRF", label: "Projeto de Resolucao do Senado Federal" },
+  { code: "PRL", label: "Parecer do Relator" },
+  { code: "PRLE", label: "Parecer Preliminar as Emendas de Plenario" },
+  { code: "PRLP", label: "Parecer Preliminar de Plenario" },
+  { code: "PRN", label: "Projeto de Resolucao do Congresso Nacional" },
+  { code: "PRO", label: "Proposta" },
+  { code: "PRP", label: "Parecer do Relator Parcial" },
+  { code: "PRR", label: "Parecer Reformulado" },
+  { code: "PRST", label: "Parecer a Redacao para o Segundo Turno" },
+  { code: "PRV", label: "Parecer Vencedor" },
+  { code: "PRVP", label: "Proposta de Redacao do Vencido em Primeiro Turno" },
+  { code: "PSS", label: "Parecer as Emendas ou ao Substitutivo do Senado" },
+  { code: "QO", label: "Questao de Ordem" },
+  { code: "R.C", label: "Recurso do Congresso Nacional" },
+  { code: "RAT", label: "Relatorio Setorial" },
+  { code: "RCEL", label: "Relatorio de Comissao de Estudo Legislativo" },
+  { code: "RCEX", label: "Relatorio de Comissao Externa" },
+  { code: "RDF", label: "Redacao Final" },
+  { code: "RDV", label: "Redacao do Vencido" },
+  { code: "REC", label: "Recurso" },
+  { code: "REL", label: "Relatorio" },
+  { code: "REL-A", label: "Relatorio Adotado pela Comissao" },
+  { code: "REM", label: "Reclamacao" },
+  { code: "REP", label: "Representacao" },
+  { code: "RGT", label: "Relatorio de Grupo de Trabalho" },
+  { code: "RIN", label: "Requerimento de Resolucao Interna" },
+  { code: "RLF", label: "Relatorio Final" },
+  { code: "RLP", label: "Relatorio Previo" },
+  { code: "RLP(R)", label: "Relatorio Previo Reformulado" },
+  { code: "RLP(V)", label: "Relatorio Previo Vencedor" },
+  { code: "RPA", label: "Relatorio Parcial" },
+  { code: "RPD", label: "Requerimento Procedimental de Sessao/Reuniao" },
+  { code: "RPDR", label: "Votacao Nominal do Requerimento Procedimental Generico" },
+  { code: "RPL", label: "Relatorio Preliminar" },
+  { code: "RPLE", label: "Relatorio Preliminar Apresentado com Emendas" },
+  { code: "RPLOA", label: "Relatorio Preliminar" },
+  { code: "RRC", label: "Relatorio de Receita" },
+  { code: "RRL", label: "Relatorio do Relator (CMO)" },
+  { code: "RRR", label: "Relatorio Reformulado" },
+  { code: "RST", label: "Redacao para o Segundo Turno" },
+  { code: "RVC", label: "Relatorio Vencedor" },
+  { code: "SAP", label: "Sustacao de Andamento de Acao Penal" },
+  { code: "SBE", label: "Subemenda" },
+  { code: "SBE-A", label: "Subemenda Adotada pela Comissao" },
+  { code: "SBR", label: "Subemenda de Relator" },
+  { code: "SBT", label: "Substitutivo" },
+  { code: "SBT-A", label: "Substitutivo adotado pela Comissao" },
+  { code: "SIP", label: "Solicitacao para instauracao de processo" },
+  { code: "SIT", label: "Solicitacao de Informacao ao TCU" },
+  { code: "SLD", label: "Sugestao de Emenda a LDO - Comissoes" },
+  { code: "SOR", label: "Sugestao de Emenda ao Orcamento - Comissoes" },
+  { code: "SPP", label: "Sugestao de Emenda ao PPA - Comissoes" },
+  { code: "SPP-R", label: "Sugestao de Emenda ao PPA - revisao (Comissoes)" },
+  { code: "SRL", label: "Sugestao de Emenda a Relatorio" },
+  { code: "SSP", label: "Subemenda Substitutiva de Plenario" },
+  { code: "SUC", label: "Sugestao a Projeto de Consolidacao de Leis" },
+  { code: "SUG", label: "Sugestao" },
+  { code: "SUM", label: "Sumula" },
+  { code: "TER", label: "Termo de Implementacao" },
+  { code: "TVR", label: "Ato de Concessao e Renovacao de Concessao de Emissora de Radio e Televisao" },
+  { code: "VTS", label: "Voto em Separado" }
+];
+
+const ALL_SIGLA_TYPES = [...SIGLA_COMMON_TYPES, ...SIGLA_OTHER_TYPES];
+const SIGLA_LABELS = new Map(ALL_SIGLA_TYPES.map((item) => [item.code, item.label]));
 
 const ADVANCED_FIELDS = [
   "compararNome",
@@ -847,14 +1010,32 @@ function getPrimarySearchLabel(payload) {
   return "Busca ampla na Camara e no Senado";
 }
 
+function normalizeSiglaList(value) {
+  if (!value) {
+    return [];
+  }
+
+  if (Array.isArray(value)) {
+    return [...new Set(value.flatMap((item) => normalizeSiglaList(item)))];
+  }
+
+  return [...new Set(
+    String(value)
+      .split(/[,;\s]+/)
+      .map((item) => item.trim().toUpperCase())
+      .filter(Boolean)
+  )];
+}
+
 function normalizePayload(payload) {
+  const siglas = normalizeSiglaList(payload.siglas).join(", ");
   return {
     nome: payload.nome?.trim() || "",
     compararNome: payload.compararNome?.trim() || "",
     busca: payload.busca?.trim() || "",
     casa: payload.casa || "Ambas",
     modoBusca: payload.modoBusca || "Todas",
-    siglas: payload.siglas?.trim() || "",
+    siglas,
     uf: payload.uf?.trim().toUpperCase() || "",
     anoInicial: payload.anoInicial?.trim?.() ?? payload.anoInicial ?? "",
     anoFinal: payload.anoFinal?.trim?.() ?? payload.anoFinal ?? "",
@@ -862,6 +1043,74 @@ function normalizePayload(payload) {
     somenteAutorPrincipal: Boolean(payload.somenteAutorPrincipal),
     semDetalhes: Boolean(payload.semDetalhes)
   };
+}
+
+function getSiglaOptionId(code) {
+  return `sigla-option-${String(code).toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+}
+
+function renderSiglaOptions(container, items) {
+  if (!container) {
+    return;
+  }
+
+  container.innerHTML = items.map((item) => `
+    <label class="sigla-option" for="${getSiglaOptionId(item.code)}">
+      <input type="checkbox" id="${getSiglaOptionId(item.code)}" value="${item.code}" data-sigla-option />
+      <span class="sigla-option-copy">
+        <strong>${item.code}</strong>
+        <small>${item.label}</small>
+      </span>
+    </label>
+  `).join("");
+}
+
+function getSiglaCheckboxes() {
+  return [...document.querySelectorAll("[data-sigla-option]")];
+}
+
+function getSelectedSiglas() {
+  return getSiglaCheckboxes()
+    .filter((checkbox) => checkbox.checked)
+    .map((checkbox) => checkbox.value);
+}
+
+function syncSiglaPickerUi() {
+  const selected = getSelectedSiglas();
+  if (form?.elements?.siglas) {
+    form.elements.siglas.value = selected.join(", ");
+  }
+
+  if (!siglaPickerTitle || !siglaPickerMeta) {
+    return;
+  }
+
+  if (selected.length === 0) {
+    siglaPickerTitle.textContent = "Todos os tipos";
+    siglaPickerMeta.textContent = "Nenhum tipo marcado. O painel vai considerar todas as siglas.";
+    return;
+  }
+
+  const visibleCodes = selected.slice(0, 4);
+  const suffix = selected.length > 4 ? ` +${selected.length - 4}` : "";
+  siglaPickerTitle.textContent = selected.length === 1
+    ? `${selected[0]} - ${SIGLA_LABELS.get(selected[0]) || "Tipo selecionado"}`
+    : `${selected.length} tipos selecionados`;
+  siglaPickerMeta.textContent = `${visibleCodes.join(", ")}${suffix}`;
+}
+
+function setSelectedSiglas(value) {
+  const selected = new Set(normalizeSiglaList(value));
+  getSiglaCheckboxes().forEach((checkbox) => {
+    checkbox.checked = selected.has(checkbox.value);
+  });
+  syncSiglaPickerUi();
+}
+
+function renderSiglaPicker() {
+  renderSiglaOptions(siglaCommonList, SIGLA_COMMON_TYPES);
+  renderSiglaOptions(siglaExtraList, SIGLA_OTHER_TYPES);
+  setSelectedSiglas("");
 }
 
 function hasAdvancedValues(payload) {
@@ -893,6 +1142,7 @@ function syncAdvancedToggle(payload = getFormPayload()) {
 }
 
 function getFormPayload() {
+  syncSiglaPickerUi();
   const data = new FormData(form);
   const payload = Object.fromEntries(data.entries());
   payload.somenteAutorPrincipal = form.elements.somenteAutorPrincipal.checked;
@@ -915,6 +1165,7 @@ function applyPayloadToForm(payload) {
     }
   });
 
+  setSelectedSiglas(normalized.siglas);
   syncAdvancedToggle(normalized);
 }
 
@@ -2093,6 +2344,10 @@ async function submitSearch() {
       throw new Error("Preencha o primeiro nome antes de usar a comparacao.");
     }
 
+    if (!payload.nome && !payload.busca) {
+      throw new Error("Sem marcar nenhuma sigla, o painel entende 'todos os tipos'. Mesmo assim, informe ao menos um nome, um tema ou os dois para montar o recorte.");
+    }
+
     const compareName =
       payload.compararNome && compareText(payload.compararNome, payload.nome) !== 0
         ? payload.compararNome
@@ -2353,6 +2608,35 @@ quickFillButtons.forEach((button) => {
   });
 });
 
+siglaPicker?.addEventListener("change", (event) => {
+  if (!event.target.matches("[data-sigla-option]")) {
+    return;
+  }
+
+  syncSiglaPickerUi();
+  saveDraft(getFormPayload());
+  syncAdvancedToggle();
+});
+
+siglaSelectCommonButton?.addEventListener("click", () => {
+  setSelectedSiglas(SIGLA_COMMON_TYPES.map((item) => item.code));
+  saveDraft(getFormPayload());
+  syncAdvancedToggle();
+});
+
+siglaSelectAllButton?.addEventListener("click", () => {
+  setSelectedSiglas(ALL_SIGLA_TYPES.map((item) => item.code));
+  saveDraft(getFormPayload());
+  syncAdvancedToggle();
+});
+
+siglaClearAllButton?.addEventListener("click", () => {
+  setSelectedSiglas([]);
+  saveDraft(getFormPayload());
+  syncAdvancedToggle();
+});
+
+renderSiglaPicker();
 loadDraft();
 renderSavedSearches();
 renderFavoritesList();
