@@ -255,6 +255,25 @@ async function fetchJson(url) {
   return response.json();
 }
 
+async function postJson(url, body) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      "User-Agent": "monitor-parlamentar-federal-web/1.0"
+    },
+    body: JSON.stringify(body)
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw httpError(response.status, `Falha ao consultar ${url}`, text.slice(0, 500));
+  }
+
+  return response.json();
+}
+
 function buildParams(rawParams) {
   const nome = compressWhitespace(rawParams.nome);
   const busca = compressWhitespace(rawParams.busca);
@@ -458,11 +477,35 @@ async function getSenadoSenador(nome, uf) {
 }
 
 function getCamaraBaseSearchText(baseItem) {
+  const portalSource = baseItem?.portalSource || {};
+  const portalAuthors = ensureArray(portalSource.autores)
+    .map((author) => author?.nome)
+    .filter(Boolean)
+    .join("; ");
+  const portalThemes = ensureArray(portalSource.temaPortal).join("; ");
+  const portalAutoThemes = ensureArray(portalSource.temaAutomatico)
+    .map((theme) => theme?.tema)
+    .filter(Boolean)
+    .join("; ");
+  const portalStates = ensureArray(portalSource.estados)
+    .map((state) => firstNonEmpty([state?.descricaoExterna, state?.descricao, state?.apelido, state?.sigla]))
+    .filter(Boolean)
+    .join("; ");
+
   return [
     baseItem.siglaTipo,
     baseItem.numero,
     baseItem.ano,
-    baseItem.ementa
+    baseItem.ementa,
+    portalSource.indexacao,
+    portalSource.explicacaoEmenta,
+    portalSource.situacaoAtual,
+    portalSource.tipoSituacaoProposicao,
+    portalSource.nomeOrgaoOrigem,
+    portalAuthors,
+    portalThemes,
+    portalAutoThemes,
+    portalStates
   ].filter(Boolean).join(" ");
 }
 
@@ -501,6 +544,7 @@ function getResultSearchText(item) {
     item.tipoDescricao,
     item.identificacao,
     item.ementa,
+    item.searchIndexText,
     item.situacaoAtual,
     item.ultimoAndamento,
     item.localAtual
@@ -561,9 +605,113 @@ async function getCamaraBaseItemsByDeputado(parlamentar, params) {
   return items;
 }
 
+function buildCamaraSearchApiPayload(params, page) {
+  return {
+    q: params.apiKeywordQuery,
+    pagina: page,
+    order: "relevancia"
+  };
+}
+
+function mapCamaraPortalHit(hit) {
+  const source = hit?._source || {};
+  const id = Number(source.id || 0) || null;
+
+  return {
+    id,
+    siglaTipo: firstNonEmpty([source.siglaProposicao]),
+    numero: Number(source.numero || 0) || null,
+    ano: Number(source.ano || source.anoApresentacao || 0) || null,
+    ementa: compressWhitespace(source.ementa),
+    dataApresentacao: firstNonEmpty([source.dataApresentacao, source.dataOrdenacao]),
+    uri: id ? `https://dadosabertos.camara.leg.br/api/v2/proposicoes/${id}` : null,
+    portalSource: source
+  };
+}
+
+function matchesCamaraPortalFilters(baseItem, params) {
+  if (!params.uf) {
+    return true;
+  }
+
+  const authors = ensureArray(baseItem?.portalSource?.autores);
+  if (authors.length === 0) {
+    return true;
+  }
+
+  return authors.some((author) => String(author?.siglaUF || "").toUpperCase() === params.uf);
+}
+
+async function getCamaraBaseItemsGlobalFromSearchApi(params) {
+  if (!params.apiKeywordQuery) {
+    throw httpError(400, "A busca global precisa de palavras-chave.");
+  }
+
+  const seen = new Set();
+  const allItems = [];
+  const pageSize = 20;
+  const targetItems = params.limit > 0 ? Math.max(params.limit * 3, 60) : 200;
+  const hardMaxPages = params.limit > 0 ? Math.max(Math.ceil(targetItems / pageSize) + 2, 6) : 25;
+  let page = 1;
+  let totalPages = 1;
+
+  while (page <= totalPages && page <= hardMaxPages) {
+    const response = await postJson(
+      "https://www.camara.leg.br/busca-api/api/v1/busca/proposicoes/_search",
+      buildCamaraSearchApiPayload(params, page)
+    );
+    const totalHits = Number(response?.hits?.total?.value || 0);
+    const hits = ensureArray(response?.hits?.hits);
+
+    totalPages = Math.max(1, Math.ceil(totalHits / pageSize));
+    if (hits.length === 0) {
+      break;
+    }
+
+    for (const hit of hits) {
+      const item = mapCamaraPortalHit(hit);
+      if (!item.id || seen.has(item.id)) {
+        continue;
+      }
+
+      seen.add(item.id);
+
+      const keep = matterFilters({
+        sigla: item.siglaTipo,
+        ano: Number(item.ano),
+        autorPrincipal: false,
+        supportsAutorPrincipal: false
+      }, params)
+        && matchesCamaraPortalFilters(item, params)
+        && testSearchMatch(getCamaraBaseSearchText(item), params);
+
+      if (keep) {
+        allItems.push(item);
+      }
+    }
+
+    if (params.limit > 0 && allItems.length >= targetItems) {
+      break;
+    }
+
+    page += 1;
+  }
+
+  return allItems;
+}
+
 async function getCamaraBaseItemsGlobal(params) {
   if (!params.apiKeywordQuery) {
     throw httpError(400, "A busca global precisa de palavras-chave.");
+  }
+
+  try {
+    const officialItems = await getCamaraBaseItemsGlobalFromSearchApi(params);
+    if (officialItems.length > 0) {
+      return officialItems;
+    }
+  } catch (_) {
+    // Fall back to Dados Abertos if the broader official search is unavailable.
   }
 
   // Tipos de proposição para busca ampla — igual ao site oficial da Câmara
@@ -786,6 +934,7 @@ function convertSenadoProcessResult(baseItem, parlamentar, detail) {
     ultimoAndamento: firstNonEmpty([latestInforme?.descricao]),
     dataUltimoAndamento: formatDate(latestInforme?.data),
     ementa: compressWhitespace(firstNonEmpty([detail?.conteudo?.ementa, baseItem?.ementa])),
+    searchIndexText: getSenadoBaseSearchText(baseItem),
     link: codigoMateria ? `https://www25.senado.leg.br/web/atividade/materias/-/materia/${codigoMateria}` : null,
     linkApi: processId ? `https://legis.senado.leg.br/dadosabertos/processo/${processId}.json` : null,
     linkPdfOriginal: normalizeExternalUrl(firstNonEmpty([detail?.documento?.url, baseItem?.urlDocumento]))
@@ -877,7 +1026,10 @@ function summarizeCamaraAuthors(authors, parlamentar) {
     return {
       displayName: parlamentar?.nome || "Autor não identificado",
       queryIsPrimary: null,
-      allNames: parlamentar?.nome || null
+      allNames: parlamentar?.nome || null,
+      partido: parlamentar?.partido || null,
+      uf: parlamentar?.uf || null,
+      codigoParlamentar: parlamentar?.codigo || null
     };
   }
 
@@ -895,12 +1047,47 @@ function summarizeCamaraAuthors(authors, parlamentar) {
   return {
     displayName: primary.nome || parlamentar?.nome || "Autor não identificado",
     queryIsPrimary,
-    allNames: allNames.join("; ")
+    allNames: allNames.join("; "),
+    partido: firstNonEmpty([primary.siglaPartido]),
+    uf: firstNonEmpty([primary.siglaUf, primary.siglaUF]),
+    codigoParlamentar: Number(String(primary.uri || "").match(/(\d+)(?:\/)?$/)?.[1] || 0) || null
+  };
+}
+
+function summarizeCamaraPortalAuthors(authors, parlamentar) {
+  const ordered = ensureArray(authors).sort((left, right) =>
+    Number(left?.numSequencial || 99999) - Number(right?.numSequencial || 99999)
+  );
+
+  if (ordered.length === 0) {
+    return summarizeCamaraAuthors([], parlamentar);
+  }
+
+  const primary = ordered[0];
+  const visible = ordered.filter((author) => author?.bolAutorExibir !== false && compressWhitespace(author?.nome));
+  const roster = (visible.length > 0 ? visible : ordered)
+    .map((author) => author?.nome)
+    .filter(Boolean);
+
+  return {
+    displayName: firstNonEmpty([primary?.nome, parlamentar?.nome, "Autor nao identificado"]),
+    queryIsPrimary: parlamentar?.codigo ? Number(primary?.codParlamentar || 0) === Number(parlamentar.codigo || 0) : null,
+    allNames: [...new Set(roster)].join("; "),
+    partido: firstNonEmpty([primary?.siglaPartido]),
+    uf: firstNonEmpty([primary?.siglaUF]),
+    codigoParlamentar: Number(primary?.codParlamentar || 0) || null
   };
 }
 
 function convertCamaraResult(baseItem, parlamentar, detail, authorSummary) {
   const status = detail?.statusProposicao || null;
+  const portalSource = baseItem?.portalSource || {};
+  const portalState = [...ensureArray(portalSource.estados)].sort((left, right) =>
+    Number(right?.idEstadoProposicaoOrgao || 0) - Number(left?.idEstadoProposicaoOrgao || 0)
+  )[0];
+  const portalDespacho = [...ensureArray(portalSource.despachos)].sort((left, right) =>
+    Number(right?.codTramitacao || 0) - Number(left?.codTramitacao || 0)
+  )[0];
   const displayName = (!parlamentar?.codigo && authorSummary?.displayName)
     ? authorSummary.displayName
     : parlamentar.nome;
@@ -908,11 +1095,11 @@ function convertCamaraResult(baseItem, parlamentar, detail, authorSummary) {
   return {
     casa: "Camara",
     parlamentar: displayName,
-    uf: parlamentar.uf || null,
-    partido: parlamentar.partido || null,
-    codigoParlamentar: parlamentar.codigo || null,
+    uf: authorSummary?.uf || parlamentar.uf || null,
+    partido: authorSummary?.partido || parlamentar.partido || null,
+    codigoParlamentar: authorSummary?.codigoParlamentar || parlamentar.codigo || null,
     tipo: baseItem.siglaTipo || null,
-    tipoDescricao: firstNonEmpty([detail?.descricaoTipo]),
+    tipoDescricao: firstNonEmpty([detail?.descricaoTipo, portalSource.descricaoProposicao]),
     numero: Number(baseItem.numero || 0),
     ano: Number(baseItem.ano || 0),
     identificacao: `${baseItem.siglaTipo || ""} ${baseItem.numero || ""}/${baseItem.ano || ""}`.trim(),
@@ -920,16 +1107,28 @@ function convertCamaraResult(baseItem, parlamentar, detail, authorSummary) {
     autorPrincipal: authorSummary?.queryIsPrimary ?? null,
     autorPrincipalNome: authorSummary?.displayName ?? null,
     autores: authorSummary?.allNames ?? parlamentar.nome ?? null,
-    tramitando: null,
-    situacaoAtual: firstNonEmpty([status?.descricaoSituacao, status?.descricaoTramitacao]),
-    dataSituacao: formatDate(status?.dataHora),
-    localAtual: firstNonEmpty([status?.siglaOrgao]),
-    ultimoAndamento: firstNonEmpty([status?.despacho]),
-    dataUltimoAndamento: formatDate(status?.dataHora),
+    tramitando: firstNonEmpty([portalSource.emTramitacao]),
+    situacaoAtual: firstNonEmpty([
+      status?.descricaoSituacao,
+      status?.descricaoTramitacao,
+      portalSource.situacaoAtual,
+      portalSource.tipoSituacaoProposicao,
+      portalState?.descricaoExterna,
+      portalState?.descricao
+    ]),
+    dataSituacao: formatDate(firstNonEmpty([status?.dataHora, portalSource.dataDaUltimaTramitacao])),
+    localAtual: firstNonEmpty([status?.siglaOrgao, portalState?.sigla, portalState?.apelido, portalSource.siglaOrgaoOrigem]),
+    ultimoAndamento: firstNonEmpty([status?.despacho, portalDespacho?.textoDespacho]),
+    dataUltimoAndamento: formatDate(firstNonEmpty([status?.dataHora, portalSource.dataDaUltimaTramitacao])),
     ementa: compressWhitespace(baseItem.ementa),
+    searchIndexText: getCamaraBaseSearchText(baseItem),
     link: `https://www.camara.leg.br/proposicoesWeb/fichadetramitacao?idProposicao=${baseItem.id}`,
-    linkApi: baseItem.uri || null,
-    linkPdfOriginal: firstNonEmpty([detail?.urlInteiroTeor, status?.url])
+    linkApi: baseItem.uri || `https://dadosabertos.camara.leg.br/api/v2/proposicoes/${baseItem.id}`,
+    linkPdfOriginal: firstNonEmpty([
+      detail?.urlInteiroTeor,
+      status?.url,
+      portalSource.codArquivoTeor ? `https://www.camara.leg.br/proposicoesWeb/prop_mostrarintegra?codteor=${portalSource.codArquivoTeor}` : null
+    ])
   };
 }
 
@@ -966,6 +1165,7 @@ function convertSenadoResult(baseItem, parlamentar, movimentacao, textoOriginal)
     ultimoAndamento: firstNonEmpty([ultimoInforme?.Descricao]),
     dataUltimoAndamento: formatDate(ultimoInforme?.Data),
     ementa: compressWhitespace(materia.Ementa),
+    searchIndexText: getSenadoBaseSearchText(baseItem),
     link: `https://www25.senado.leg.br/web/atividade/materias/-/materia/${materia.Codigo}`,
     linkApi: `https://legis.senado.leg.br/dadosabertos/materia/${materia.Codigo}.json`,
     linkPdfOriginal: normalizeExternalUrl(textoOriginal?.UrlTexto)
@@ -1114,8 +1314,12 @@ async function runCamaraSearch(parlamentar, params, warnings) {
       let authorSummary = null;
 
       if (!parlamentar.codigo || params.somenteAutorPrincipal) {
-        const authors = await getCamaraAutores(baseItem.id, baseItem.uriAutores);
-        authorSummary = summarizeCamaraAuthors(authors, parlamentar);
+        if (!parlamentar.codigo && ensureArray(baseItem?.portalSource?.autores).length > 0) {
+          authorSummary = summarizeCamaraPortalAuthors(baseItem.portalSource.autores, parlamentar);
+        } else {
+          const authors = await getCamaraAutores(baseItem.id, baseItem.uriAutores);
+          authorSummary = summarizeCamaraAuthors(authors, parlamentar);
+        }
 
         if (params.somenteAutorPrincipal && authorSummary.queryIsPrimary !== true) {
           continue;
